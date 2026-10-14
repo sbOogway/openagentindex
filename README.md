@@ -5,24 +5,9 @@ Finds, verifies and indexes [A2A](https://a2a-protocol.org) agents, and serves s
 Scope: A2A agents only — something is listed only if it serves a valid agent card. No MCP servers, and
 the search engine is not itself an agent: its interfaces are a REST API and a static website.
 
-## Architecture (MVP)
+## Design
 
-```
-crawler image ──► SQLite ◄── api image (REST) ◄── frontend (static, Cloudflare Pages)
-```
-
-Written in Go. Both images come from this codebase and run on one VPS, sharing the SQLite file on a volume.
-
-- **Crawler** — discovers candidate domains (a2aregistry API, certificate logs, GitHub), fetches
-  `/.well-known/agent-card.json` from each agent's own domain, validates v1.0 / v0.3 cards, and
-  re-checks known agents (card refresh, liveness, latency). Other registries are only used as leads;
-  card data always comes from the agent itself.
-- **API** — `GET /search`, `GET /agents/{domain}`; ranks by text relevance boosted by quality signals
-  (uptime, valid card, responds, signed).
-- **Frontend** — static search page calling the API.
-
-Out of scope for the MVP: Nostr sync, LLM-based skill testing, owner claims, signature verification,
-accounts, payments, large-scale domain scanning.
+See [`spec.md`](spec.md) for the scope, the C4 diagrams, the data model and the milestones.
 
 ## Layout
 

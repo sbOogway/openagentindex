@@ -2,7 +2,7 @@
 
 ## Project
 
-- Open Agent Index finds, verifies and indexes A2A agents and serves search over them. See `README.md` for the architecture.
+- Open Agent Index finds, verifies and indexes A2A agents and serves search over them. `spec.md` defines the design. Change the spec before you change the design.
 - Index A2A agents only. Do not index MCP servers.
 - The search engine is not an agent. Its interfaces are the REST API and the static frontend. Do not add an A2A or MCP endpoint.
 - Get agent card data from the agent's own domain. Use other registries only as a source of leads.
