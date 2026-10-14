@@ -445,6 +445,7 @@ All responses are JSON. The base path is `/v1`.
 | `GET /v1/search` | Search agents. |
 | `GET /v1/agents/{host}` | Get one agent: the agent view, the current card and the newest observations. |
 | `GET /v1/stats` | Get counts: leads, agents for each status, protocol versions. |
+| `GET /v1/tags` | Get the most common skill tags with their counts. `q`: tag prefix. `limit`: 1 to 200, default 50. Counts only hosts with a valid card. |
 | `GET /openapi.json` | Get the OpenAPI 3.1 description of this API. |
 | `GET /llms.txt` | Get a short plain-text guide for language models: what the index contains and how to search it. |
 | `GET /healthz` | Get the API health. |
@@ -454,7 +455,7 @@ All responses are JSON. The base path is `/v1`.
 | Name | Default | Values |
 |---|---|---|
 | `q` | empty | Free text |
-| `tag` | none | A skill tag. Repeat for more tags. |
+| `tag` | none | A skill tag, any case. Repeat for more tags: the agent must have all of them. |
 | `status` | `live` | `live`, `degraded`, `any` |
 | `binding` | any | `JSONRPC`, `HTTP+JSON`, `GRPC` |
 | `version` | any | `1.0`, `0.3` |
@@ -472,6 +473,7 @@ Search result item:
   "protocol_version": "1.0",
   "bindings": ["JSONRPC", "HTTP+JSON"],
   "skills": [{"id": "echo", "name": "Echo", "tags": ["test", "echo"]}],
+  "tags": ["echo", "test"],
   "streaming": true,
   "signed": false,
   "status": "live",
@@ -480,6 +482,7 @@ Search result item:
 }
 ```
 
+- `tags` holds the tags of all skills, in lower case, sorted, without duplicates. `bindings` holds only `JSONRPC`, `HTTP+JSON` and `GRPC`.
 - Errors use the body `{"error": "<message>"}` and a 4xx or 5xx status.
 - Send `Access-Control-Allow-Origin` with the website origin.
 - Send `Cache-Control: public, max-age=60` on search and agent responses.
