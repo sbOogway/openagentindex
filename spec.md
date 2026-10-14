@@ -362,7 +362,7 @@ flowchart LR
 | Source | Method | Interval |
 |---|---|---|
 | Seed file | Hosts in `seeds.txt`, one for each line. | At start |
-| a2aregistry.org | `GET /api/agents`, all pages. Use only the host of `wellKnownURI`. | Daily |
+| a2aregistry.org | `GET /api/agents` with `limit` and `offset`, all pages. Use only the host of each `https` `wellKnownURI`. | Daily |
 | Certificate transparency | Query crt.sh for names that start with `agent.`, `agents.` or `a2a.`. Best effort: crt.sh is slow and can fail. | Daily |
 | GitHub | Code search for files named `agent-card.json`. Use the hosts in their `url` fields. Needs a token. | Daily |
 
@@ -532,8 +532,8 @@ Configuration (environment variables):
 
 | # | Result |
 |---|---|
-| M1 | `card`, `fetch`, `index`. The crawler reads the seed file and a2aregistry.org. A report shows the found agents. |
-| M2 | Card checks, endpoint checks, status and backoff. |
+| M1 | `card`, `fetch` (without the per-host wait and the global limit), `index`. The crawler reads the seed file and a2aregistry.org. A report shows the found agents. |
+| M2 | Worker pool, with the per-host wait and the global limit of section 7.3. Card checks, endpoint checks, status and backoff. |
 | M3 | Certificate transparency and GitHub lead sources. Coverage report against a2aregistry.org. |
 | M4 | REST API with search and ranking, `/openapi.json` and `/llms.txt`. In development, it reads a local SQLite file. |
 | M5 | Snapshots to R2, `Containerfile`, compose file, VPS deployment. |
