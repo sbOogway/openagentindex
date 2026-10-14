@@ -3,6 +3,7 @@ module github.com/sbOogway/openagentindex
 go 1.27.2
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/a2aproject/a2a-go/v2 v2.6.0
 	github.com/google/uuid v1.6.0
 	github.com/gowebpki/jcs v1.0.2
