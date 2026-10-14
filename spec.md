@@ -4,14 +4,15 @@ Status: draft. This document defines the MVP. Change it before you change the de
 
 ## 1. Purpose
 
-Open Agent Index finds A2A agents on the public internet. It verifies them, keeps them in an index and lets people search the index.
+Open Agent Index finds A2A agents on the public internet. It verifies them, keeps them in an index and lets people and agents search the index.
 
 ### 1.1 Goals
 
 - Find more live A2A agents than the current registries.
 - Get each agent card from the agent's own domain.
 - Show which agents are live, and how reliable they are.
-- Give search results through a REST API and a static website.
+- Give search results to people through a static website.
+- Give search results to agents through a REST API. Describe the API so that agents can use it without help.
 
 ### 1.2 Non-goals
 
@@ -41,12 +42,15 @@ Open Agent Index finds A2A agents on the public internet. It verifies them, keep
 flowchart TB
   searcher["<b>Searcher</b><br/>[Person]<br/><br/>A developer who looks for an A2A agent."]
   operator["<b>Agent operator</b><br/>[Person]<br/><br/>A person who runs an A2A agent."]
+  client["<b>Client agent</b><br/>[External System]<br/><br/>An AI agent that looks for other agents."]
   oai["<b>Open Agent Index</b><br/>[Software System]<br/><br/>Finds, verifies and indexes A2A agents. Serves search."]
   sources["<b>Lead sources</b><br/>[External System]<br/><br/>a2aregistry.org, certificate transparency logs, GitHub, seed file."]
   agents["<b>A2A agents</b><br/>[External System]<br/><br/>Serve agent cards and A2A endpoints."]
 
   searcher -- "Searches for agents<br/>[HTTPS]" --> oai
   searcher -. "Calls the selected agent<br/>[A2A]" .-> agents
+  client -- "Searches for agents<br/>[HTTPS, JSON]" --> oai
+  client -. "Calls the selected agent<br/>[A2A]" .-> agents
   operator -- "Publishes the agent card" --> agents
   oai -- "Reads leads<br/>[HTTPS]" --> sources
   oai -- "Gets agent cards, checks endpoints<br/>[HTTPS]" --> agents
@@ -58,7 +62,7 @@ flowchart TB
   classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
   class searcher,operator person
   class oai system
-  class sources,agents external
+  class sources,agents,client external
 ```
 
 ## 4. Containers (C4 level 2)
@@ -66,6 +70,7 @@ flowchart TB
 ```mermaid
 flowchart TB
   searcher["<b>Searcher</b><br/>[Person]<br/><br/>Uses a browser or a script."]
+  client["<b>Client agent</b><br/>[External System]<br/><br/>An AI agent that looks for other agents."]
   web["<b>Website</b><br/>[Container: static HTML and JS, Cloudflare Pages]<br/><br/>Search page. Calls the API."]
 
   subgraph vps["VPS"]
@@ -83,6 +88,7 @@ flowchart TB
   searcher -- "Uses<br/>[HTTPS]" --> web
   searcher -- "Calls the API<br/>[HTTPS, JSON]" --> tunnel
   web -- "Calls the API<br/>[HTTPS, JSON]" --> tunnel
+  client -- "Reads the API description, calls the API<br/>[HTTPS, JSON]" --> tunnel
   tunnel -- "Forwards requests<br/>[HTTP]" --> api
   crawler -- "Reads and writes" --> db
   crawler -- "Uploads snapshots<br/>[S3 API]" --> r2
@@ -97,7 +103,7 @@ flowchart TB
   classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
   class searcher person
   class web,tunnel,api,crawler,db,r2 container
-  class sources,agents external
+  class sources,agents,client external
   style vps fill:none,stroke:#444,stroke-dasharray:5 5
 ```
 
@@ -379,6 +385,8 @@ All responses are JSON. The base path is `/v1`.
 | `GET /v1/search` | Search agents. |
 | `GET /v1/agents/{host}` | Get one agent: the record, the last card and the last checks. |
 | `GET /v1/stats` | Get counts: leads, agents for each status, protocol versions. |
+| `GET /openapi.json` | Get the OpenAPI 3.1 description of this API. |
+| `GET /llms.txt` | Get a short plain-text guide for language models: what the index contains and how to search it. |
 | `GET /healthz` | Get the API health. |
 
 `GET /v1/search` parameters:
@@ -415,6 +423,8 @@ Search result item:
 - Errors use the body `{"error": "<message>"}` and a 4xx or 5xx status.
 - Send `Access-Control-Allow-Origin` with the website origin.
 - Send `Cache-Control: public, max-age=60` on search and agent responses.
+- Keep `/openapi.json` and `/llms.txt` in the repository. Serve them from the API binary.
+- Write a description for each operation and each parameter. Agents select and call operations from these descriptions.
 
 ## 10. Website
 
@@ -452,6 +462,7 @@ Configuration (environment variables):
 - `internal/card` uses fixture cards in `testdata/`: valid v1.0, valid v0.3, and invalid cards.
 - `internal/fetch` tests the limits, `robots.txt` and the SSRF block.
 - `internal/index` uses a temporary SQLite file.
+- `internal/api` checks that `/openapi.json` is valid OpenAPI 3.1 and agrees with the routes.
 - `internal/snapshot` uses an in-memory object store behind its storage interface. The tests do not use R2.
 - A manual end-to-end test runs the crawler with `echo-agent.mattiapapaccioli.com` in `seeds.txt`. The agent must become `live`.
 
@@ -462,7 +473,7 @@ Configuration (environment variables):
 | M1 | `card`, `fetch`, `index`. The crawler reads the seed file and a2aregistry.org. A report shows the found agents. |
 | M2 | Card checks, endpoint checks, status and backoff. |
 | M3 | Certificate transparency and GitHub lead sources. Coverage report against a2aregistry.org. |
-| M4 | REST API with search and ranking. In development, it reads a local SQLite file. |
+| M4 | REST API with search and ranking, `/openapi.json` and `/llms.txt`. In development, it reads a local SQLite file. |
 | M5 | Snapshots to R2, `Containerfile`, compose file, VPS deployment. |
 | M6 | Website on Cloudflare Pages. |
 
