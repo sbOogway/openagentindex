@@ -9,14 +9,18 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"sync"
 	"syscall"
 	"time"
+
+	"github.com/temoto/robotstxt"
 )
 
 const (
 	timeout      = 10 * time.Second
 	maxBodyBytes = 1 << 20
 	maxRedirects = 5
+	robotsTTL    = 24 * time.Hour
 )
 
 var (
@@ -24,16 +28,26 @@ var (
 	ErrTooManyRedirects = errors.New("too many redirects")
 	ErrBodyTooLarge     = errors.New("response body is larger than 1 MiB")
 	ErrBlockedAddress   = errors.New("address is not public")
+	ErrDisallowed       = errors.New("robots.txt disallows the URL")
 )
 
 type Client struct {
 	http      *http.Client
 	userAgent string
 	allow     func(netip.Addr) bool
+	now       func() time.Time
+
+	mu     sync.Mutex
+	robots map[string]robotsRules
+}
+
+type robotsRules struct {
+	data    *robotstxt.RobotsData
+	expires time.Time
 }
 
 func New(userAgent string) *Client {
-	c := &Client{userAgent: userAgent, allow: isPublic}
+	c := &Client{userAgent: userAgent, allow: isPublic, now: time.Now, robots: map[string]robotsRules{}}
 	dialer := &net.Dialer{Timeout: timeout, Control: c.control}
 	c.http = &http.Client{
 		Timeout: timeout,
@@ -45,6 +59,7 @@ func New(userAgent string) *Client {
 }
 
 // Get returns the status code and the body of the response.
+// It sends no request if robots.txt disallows the URL.
 func (c *Client) Get(ctx context.Context, rawURL string) (int, []byte, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -53,6 +68,46 @@ func (c *Client) Get(ctx context.Context, rawURL string) (int, []byte, error) {
 	if err := requireHTTPS(u); err != nil {
 		return 0, nil, err
 	}
+	if err := c.checkRobots(ctx, u); err != nil {
+		return 0, nil, err
+	}
+	return c.get(ctx, u)
+}
+
+func (c *Client) checkRobots(ctx context.Context, u *url.URL) error {
+	robots, err := c.robotsData(ctx, u.Host)
+	if err != nil {
+		return fmt.Errorf("robots.txt: %w", err)
+	}
+	if !robots.TestAgent(u.RequestURI(), c.userAgent) {
+		return fmt.Errorf("%w: %s", ErrDisallowed, u.Redacted())
+	}
+	return nil
+}
+
+func (c *Client) robotsData(ctx context.Context, host string) (*robotstxt.RobotsData, error) {
+	c.mu.Lock()
+	rules, ok := c.robots[host]
+	c.mu.Unlock()
+	if ok && c.now().Before(rules.expires) {
+		return rules.data, nil
+	}
+	status, body, err := c.get(ctx, &url.URL{Scheme: "https", Host: host, Path: "/robots.txt"})
+	if err != nil {
+		return nil, err
+	}
+	data, err := robotstxt.FromStatusAndBytes(status, body)
+	if err != nil {
+		return nil, err
+	}
+	rules = robotsRules{data: data, expires: c.now().Add(robotsTTL)}
+	c.mu.Lock()
+	c.robots[host] = rules
+	c.mu.Unlock()
+	return rules.data, nil
+}
+
+func (c *Client) get(ctx context.Context, u *url.URL) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return 0, nil, err
