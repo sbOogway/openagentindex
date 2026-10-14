@@ -113,7 +113,7 @@ flowchart TB
 
 | Container | Runs as | Notes |
 |---|---|---|
-| Website | Cloudflare Pages | Source in `web/`. No build step. |
+| Website | Cloudflare Pages | Source in `web/`. Pages runs `npm run build` and serves `web/dist`. |
 | Tunnel | Container on the VPS | Official `cloudflare/cloudflared` image. |
 | API | Container on the VPS | Does not use the crawler volume. It can run on a different host. |
 | Crawler | Container on the VPS | The only writer to the index. Runs all the time. |
@@ -488,9 +488,10 @@ Search result item:
 
 ## 10. Website
 
-- Static HTML, CSS and JavaScript in `web/`. No framework.
+- A static website in `web/`, built with npm: Vite (build and development server), Tailwind CSS with Basecoat (components), Alpine.js (data binding). The build output is static files only.
+- The website reads the API URL from `VITE_API_URL` at build time.
 - One search page with filters, and one page for each agent.
-- Show agent card text as text only. Never insert it as HTML. Agent cards are untrusted input.
+- Show agent card text as text only. Never insert it as HTML (no `x-html`, no `innerHTML`). Agent cards are untrusted input.
 - If the API does not respond, show a message that search is not available.
 - The agent page has a chat. The browser of the user sends A2A messages directly to the JSON-RPC endpoint of the agent: `SendMessage` for v1.0, `message/send` for v0.3. The website and the API do not relay messages. The chat works only with agents that allow CORS. Show agent replies as text only.
 
