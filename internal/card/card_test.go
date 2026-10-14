@@ -63,6 +63,8 @@ func TestParseInvalid(t *testing.T) {
 		{name: "relative URL", data: `{"name": "A", "supportedInterfaces": [{"url": "/a2a", "protocolBinding": "JSONRPC"}]}`},
 		{name: "non-HTTP URL", data: `{"name": "A", "supportedInterfaces": [{"url": "ftp://a.example", "protocolBinding": "JSONRPC"}]}`},
 		{name: "no binding", data: `{"name": "A", "supportedInterfaces": [{"url": "https://a.example"}]}`},
+		{name: "duplicate key", data: `{"name": "A", "name": "B", "supportedInterfaces": [{"url": "https://a.example", "protocolBinding": "JSONRPC"}]}`},
+		{name: "nested duplicate key", data: `{"name": "A", "capabilities": {"streaming": true, "streaming": false}, "supportedInterfaces": [{"url": "https://a.example", "protocolBinding": "JSONRPC"}]}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
