@@ -231,7 +231,7 @@ The index has three kinds of tables. This makes it possible to merge indexes fro
 | Kind | Tables | Rules |
 |---|---|---|
 | Facts | `cards`, `observations` | Insert only. Never update a row. The key does not depend on the node that stores the row. |
-| Derived | `agents`, `agent_tags`, `agents_fts` | Calculate from the facts and the local state. Rebuild at any time. |
+| Derived | `agents`, `agent_tags`, `agents_fts`, view `host_summaries` | Calculate from the facts and the local state. Rebuild at any time. |
 | Local state | `leads`, `denylist`, `observers`, `node` | Decisions of this node only. |
 
 ```mermaid
@@ -326,6 +326,7 @@ Rules:
 - `observers` holds this node with weight 1. In the MVP, there are no other observers.
 - `node` holds one row. The node creates it at the first start.
 - `agents.status` is `live`, `degraded` or `gone`. See section 7.5.
+- `host_summaries` is a SQL view: the newest card check of each host and the fields of its current card. The API reads it until M2 builds `agents`.
 - `agents_fts` is an FTS5 table. `skills` holds the skill names, descriptions, tags and examples.
 - The view does not include hosts in `denylist`.
 - Times are Unix seconds.

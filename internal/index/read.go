@@ -70,41 +70,15 @@ func OpenReadOnly(ctx context.Context, path string) (*Index, error) {
 	return &Index{db: db}, nil
 }
 
-// The current card of a host is its newest valid card (spec section 6).
-const summaries = `
-WITH checks AS (
-  SELECT o.id, o.host, o.ok, o.http_status, o.error, o.at, o.card_hash
-  FROM observations o JOIN observers w ON w.observer = o.observer AND w.weight > 0
-  WHERE o.kind = 'card'
-),
-latest AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY host ORDER BY at DESC, id DESC) AS n FROM checks
-),
-current AS (
-  SELECT host, card_hash, ROW_NUMBER() OVER (PARTITION BY host ORDER BY at DESC, id DESC) AS n
-  FROM checks WHERE ok = 1 AND card_hash IS NOT NULL
-),
-summary AS (
-  SELECT l.host, l.ok, l.http_status, l.error, l.at, c.card_json,
-    coalesce(json_extract(c.card_json, '$.name'), '') AS name,
-    coalesce(json_extract(c.card_json, '$.description'), '') AS description,
-    coalesce(json_extract(c.card_json, '$.supportedInterfaces[0].protocolVersion'),
-             json_extract(c.card_json, '$.protocolVersion'), '') AS protocol_version
-  FROM latest l
-  LEFT JOIN current cu ON cu.host = l.host AND cu.n = 1
-  LEFT JOIN cards c ON c.card_hash = cu.card_hash
-  WHERE l.n = 1
-)`
-
 const summaryColumns = `host, name, description, protocol_version, ok, http_status, error, at`
 
 func (i *Index) Search(ctx context.Context, q Query) (Results, error) {
 	if err := validateQuery(q); err != nil {
 		return Results{}, err
 	}
-	rows, err := i.db.QueryContext(ctx, summaries+`
+	rows, err := i.db.QueryContext(ctx, `
 		SELECT `+summaryColumns+`, COUNT(*) OVER ()
-		FROM summary
+		FROM host_summaries
 		WHERE (?1 = 'any' OR (?1 = 'ok') = (ok = 1))
 		  AND (?2 = '' OR host LIKE ?2 ESCAPE '\' OR name LIKE ?2 ESCAPE '\' OR description LIKE ?2 ESCAPE '\')
 		ORDER BY name = '', lower(name), host
@@ -129,8 +103,8 @@ func (i *Index) Search(ctx context.Context, q Query) (Results, error) {
 func (i *Index) Agent(ctx context.Context, host string) (Agent, error) {
 	var a Agent
 	var card sql.NullString
-	err := i.db.QueryRowContext(ctx, summaries+`
-		SELECT `+summaryColumns+`, card_json FROM summary WHERE host = ?`, host).
+	err := i.db.QueryRowContext(ctx, `
+		SELECT `+summaryColumns+`, card_json FROM host_summaries WHERE host = ?`, host).
 		Scan(append(summaryFields(&a.Summary), &card)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Agent{}, fmt.Errorf("%w: %s", ErrNotFound, host)
