@@ -40,7 +40,7 @@ The binaries read `oai.toml` (local development values). Each `OAI_*` environmen
 ```sh
 make run-crawler    # one crawl of seeds.txt into data/oai.db
 make run-api        # API on localhost:8080 (oai.toml), reads data/oai.db
-make run-web        # website on http://localhost:8000 (needs run-api)
+make run-web        # website on http://localhost:8000 with live reload (Vite, needs npm and run-api)
 make test
 ```
 
