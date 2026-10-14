@@ -1,0 +1,33 @@
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.14.0
+    hooks:
+      - id: golangci-lint-config-verify
+      - id: golangci-lint-fmt
+      - id: golangci-lint-full
+
+  - repo: local
+    hooks:
+      - id: go-mod-tidy
+        name: go mod tidy
+        language: golang
+        entry: go mod tidy -diff
+        files: ^go\.(mod|sum)$|\.go$
+        pass_filenames: false
+      - id: go-test
+        name: go test
+        language: golang
+        entry: go test -race ./...
+        types: [go]
+        pass_filenames: false
+        stages: [pre-push]
+      - id: govulncheck
+        name: govulncheck
+        language: golang
+        entry: govulncheck ./...
+        additional_dependencies: [golang.org/x/vuln/cmd/govulncheck@v1.9.0]
+        files: ^go\.(mod|sum)$|\.go$
+        pass_filenames: false
+        stages: [pre-push]
