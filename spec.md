@@ -22,7 +22,7 @@ Open Agent Index finds A2A agents on the public internet. It verifies them, keep
 - Do not verify agent card signatures. Record only if a signature is present.
 - Do not supply accounts, payments or owner claims.
 - Do not scan large ranges of domains.
-- Do not synchronize with other nodes (for example, over Nostr).
+- Do not synchronize with other nodes. Section 14 shows how to add this later.
 
 ## 2. Terms
 
@@ -530,7 +530,33 @@ Configuration (environment variables):
 | M5 | Snapshots to R2, `Containerfile`, compose file, VPS deployment. |
 | M6 | Website on Cloudflare Pages. |
 
-## 14. Open questions
+## 14. Future: decentralized sync
+
+This section is not part of the MVP. It shows how nodes can share the index later. The data model in section 6 supports it without changes to the fact tables.
+
+```mermaid
+flowchart LR
+  subgraph A["Node A"]
+    FA[(facts)] --> VA[(agent view)]
+  end
+  subgraph B["Node B"]
+    FB[(facts)] --> VB[(agent view)]
+  end
+  FA -->|publish| EA[/export A/]
+  FB -->|publish| EB[/export B/]
+  EA -->|pull, verify, merge| FB
+  EB -->|pull, verify, merge| FA
+```
+
+- **Export.** Each node publishes its facts at a public URL. The format is JSONL: one card or one observation on each line, with a `format_version` field. Nodes exchange exports, not SQLite files, because the schema can change between versions.
+- **Peers.** Each node has a list of peer export URLs. It pulls each export on a schedule.
+- **Merge.** Insert the facts with `INSERT OR IGNORE`. Then rebuild the derived tables. The result is the same in any order and after any number of merges. Never merge local state.
+- **Trust.** Each node gets a key pair and signs its observations. The node accepts only observations with a valid signature. The weight in `observers` sets the trust in each observer. An unknown observer has weight 0.
+- **Checks on import.** Calculate `card_hash` again from the card. Reject observations with a time more than 5 min in the future. Do not import observations that are older than 30 days.
+- **Transport.** Start with the pull of exports. Later, Nostr relays can send the same records faster. The merge does not change.
+- **Website.** The website can download a public export and search it in the browser. Then search works without the API.
+
+## 15. Open questions
 
 - Domain name for the website and the API.
 - VPS provider.
