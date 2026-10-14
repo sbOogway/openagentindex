@@ -18,7 +18,7 @@ Open Agent Index finds A2A agents on the public internet. It verifies them, keep
 
 - Do not index MCP servers or other non-A2A services.
 - Do not operate as an A2A agent. Do not supply an A2A or MCP endpoint.
-- Do not send tasks to agents. Do not test agent skills.
+- The crawler and the API do not send tasks to agents. Do not test agent skills. (The chat of the website sends messages from the browser of the user, see section 10.)
 - Do not verify agent card signatures. Record only if a signature is present.
 - Do not supply accounts, payments or owner claims.
 - Do not scan large ranges of domains.
@@ -492,6 +492,7 @@ Search result item:
 - One search page with filters, and one page for each agent.
 - Show agent card text as text only. Never insert it as HTML. Agent cards are untrusted input.
 - If the API does not respond, show a message that search is not available.
+- The agent page has a chat. The browser of the user sends A2A messages directly to the JSON-RPC endpoint of the agent: `SendMessage` for v1.0, `message/send` for v0.3. The website and the API do not relay messages. The chat works only with agents that allow CORS. Show agent replies as text only.
 
 ## 11. Deployment
 
