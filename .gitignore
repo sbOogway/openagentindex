@@ -1,0 +1,14 @@
+# Binaries
+/bin/
+*.exe
+*.test
+*.out
+
+# Local data
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Env
+.env
