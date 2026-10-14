@@ -501,20 +501,26 @@ Search result item:
 - The crawler and the API log JSON to stdout with `log/slog`.
 - The snapshots in R2 are the backups. See section 4.1.
 
-Configuration (environment variables):
+Configuration:
 
-| Variable | Used by | Purpose |
-|---|---|---|
-| `OAI_DB_PATH` | crawler | Path of the SQLite file |
-| `OAI_CONTACT_URL` | crawler | URL in the user agent |
-| `OAI_GITHUB_TOKEN` | crawler | Token for GitHub code search |
-| `OAI_SEEDS_PATH` | crawler | Path of `seeds.txt` |
-| `OAI_LISTEN_ADDR` | api | Listen address, for example `:8080` |
-| `OAI_CORS_ORIGIN` | api | Website origin |
-| `OAI_SNAPSHOT_DIR` | api | Directory for the local snapshot |
-| `OAI_R2_ENDPOINT` | crawler, api | R2 S3 endpoint |
-| `OAI_R2_BUCKET` | crawler, api | Bucket name |
-| `OAI_R2_ACCESS_KEY_ID`, `OAI_R2_SECRET_ACCESS_KEY` | crawler, api | R2 credentials. The API needs read access only. |
+- Each binary reads the TOML file `oai.toml` in the working directory, or the file in `OAI_CONFIG`. The crawler reads the section `[crawler]`, the API reads `[api]`.
+- An environment variable overrides the key of the file. Containers can use environment variables only.
+- If `OAI_CONFIG` is not set and `oai.toml` does not exist, the binary uses the environment variables only. If `OAI_CONFIG` is set, the file must exist. An unknown key is an error.
+- The binaries have no default values for ports, addresses, paths or URLs. A missing value stops the binary with an error that names the key and the variable.
+- Keep secrets (tokens, R2 credentials) in environment variables, not in the file.
+
+| Key | Variable | Used by | Purpose |
+|---|---|---|---|
+| `db_path` | `OAI_DB_PATH` | crawler, api | Path of the SQLite file. The API uses it in development (M4). |
+| `contact_url` | `OAI_CONTACT_URL` | crawler | URL in the user agent |
+| | `OAI_GITHUB_TOKEN` | crawler | Token for GitHub code search |
+| `seeds_path` | `OAI_SEEDS_PATH` | crawler | Path of `seeds.txt` |
+| `listen_addr` | `OAI_LISTEN_ADDR` | api | Listen address, for example `:8080` |
+| `cors_origin` | `OAI_CORS_ORIGIN` | api | Website origin. Empty: no CORS header. |
+| `snapshot_dir` | `OAI_SNAPSHOT_DIR` | api | Directory for the local snapshot |
+| `r2_endpoint` | `OAI_R2_ENDPOINT` | crawler, api | R2 S3 endpoint |
+| `r2_bucket` | `OAI_R2_BUCKET` | crawler, api | Bucket name |
+| | `OAI_R2_ACCESS_KEY_ID`, `OAI_R2_SECRET_ACCESS_KEY` | crawler, api | R2 credentials. The API needs read access only. |
 
 ## 12. Tests
 
