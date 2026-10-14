@@ -35,6 +35,10 @@ Open Agent Index finds A2A agents on the public internet. It verifies them, keep
 | Lead source | An external list that supplies leads. |
 | Card check | A request for the agent card. |
 | Endpoint check | A request to an A2A endpoint of the agent. |
+| Node | One installation of Open Agent Index. Each node has a UUIDv7 node ID. |
+| Observer | The node that did a check. |
+| Observation | The record of one check: observer, host, kind, time and result. |
+| Agent view | The current state of each agent. The index calculates it from cards and observations. |
 
 ## 3. System context (C4 level 1)
 
@@ -78,7 +82,7 @@ flowchart TB
   tunnel["<b>Tunnel</b><br/>[Container: cloudflared]<br/><br/>Connects the API to Cloudflare. Opens no inbound ports."]
   api["<b>API</b><br/>[Container: Go]<br/><br/>Serves search and agent records as JSON. Reads a local copy of the latest snapshot."]
   crawler["<b>Crawler</b><br/>[Container: Go]<br/><br/>Collects leads, gets agent cards, checks agents. Publishes snapshots."]
-  db[("<b>Index</b><br/>[Container: SQLite in WAL mode, on a volume]<br/><br/>Leads, agents, checks, full-text index.")]
+  db[("<b>Index</b><br/>[Container: SQLite in WAL mode, on a volume]<br/><br/>Cards, observations, agent view, leads.")]
   end
 
   r2[("<b>Snapshot store</b><br/>[Container: Cloudflare R2, private bucket]<br/><br/>Read-only snapshots of the index.")]
@@ -133,10 +137,10 @@ flowchart TB
     direction TB
   scheduler["<b>Scheduler</b><br/>[Component: internal/crawler]<br/><br/>Decides which work is due. Runs the work in a worker pool."]
   leads["<b>Lead sources</b><br/>[Component: internal/leads]<br/><br/>One adapter for each source. Returns hosts."]
-  probe["<b>Prober</b><br/>[Component: internal/probe]<br/><br/>Does card checks and endpoint checks."]
+  probe["<b>Prober</b><br/>[Component: internal/probe]<br/><br/>Does card checks and endpoint checks. Returns observations."]
   card["<b>Card parser</b><br/>[Component: internal/card]<br/><br/>Parses and validates v1.0 and v0.3 cards."]
   fetch["<b>Fetcher</b><br/>[Component: internal/fetch]<br/><br/>Polite HTTP client with limits and SSRF protection."]
-  index["<b>Index</b><br/>[Component: internal/index]<br/><br/>Stores leads, agents and checks. Runs search."]
+  index["<b>Index</b><br/>[Component: internal/index]<br/><br/>Stores cards and observations. Builds the agent view. Runs search."]
   publisher["<b>Snapshot publisher</b><br/>[Component: internal/snapshot]<br/><br/>Writes a copy of the index. Uploads it to R2."]
   end
 
@@ -147,7 +151,7 @@ flowchart TB
 
   scheduler -- "Requests new leads" --> leads
   scheduler -- "Requests checks" --> probe
-  scheduler -- "Reads due work, writes results" --> index
+  scheduler -- "Reads due work, ingests observations" --> index
   scheduler -- "Requests a snapshot every 10 min" --> publisher
   probe -- "Parses cards with" --> card
   leads -- "Uses" --> fetch
@@ -209,8 +213,8 @@ flowchart TB
 | `internal/card` | Parse and validate agent cards. Make one model from v1.0 and v0.3. | `Parse(data) (Card, error)` |
 | `internal/fetch` | Do HTTP requests with the limits in section 7.3. | `Client.Get(ctx, url)`, `Client.Post(ctx, url, body)` |
 | `internal/leads` | Read leads from each source. | `Source` adapters that return hosts |
-| `internal/probe` | Do card checks and endpoint checks. | `CheckCard(ctx, host)`, `CheckEndpoint(ctx, card)` |
-| `internal/index` | Own the schema, the writes, the reads and the search. | `Search(ctx, query)`, `Agent(ctx, host)`, write methods |
+| `internal/probe` | Do card checks and endpoint checks. Return one observation for each check. | `CheckCard(ctx, host)`, `CheckEndpoint(ctx, card)` |
+| `internal/index` | Own the schema, the writes, the reads and the search. Build the agent view. | `Ingest(ctx, observation)`, `Search(ctx, query)`, `Agent(ctx, host)`, lead methods |
 | `internal/crawler` | Schedule the work. Connect the packages above. | `Run(ctx)` |
 | `internal/api` | Serve HTTP. | `Handler(index) http.Handler` |
 | `internal/snapshot` | Publish snapshots to R2. Load the latest snapshot from R2. | `Publisher.Publish(ctx)`, `Loader.Run(ctx)` |
@@ -221,27 +225,44 @@ The card parser uses `github.com/a2aproject/a2a-go/v2` for v1.0 cards and its `a
 
 ## 6. Data model
 
+The index has three kinds of tables. This makes it possible to merge indexes from different nodes in the future (section 14).
+
+| Kind | Tables | Rules |
+|---|---|---|
+| Facts | `cards`, `observations` | Insert only. Never update a row. The key does not depend on the node that stores the row. |
+| Derived | `agents`, `agent_tags`, `agents_fts` | Calculate from the facts and the local state. Rebuild at any time. |
+| Local state | `leads`, `denylist`, `observers`, `node` | Decisions of this node only. |
+
 ```mermaid
 erDiagram
-  leads ||--o| agents : "becomes"
-  agents ||--o{ checks : "has"
+  cards ||--o{ observations : "seen in"
+  cards ||--o{ agents : "current card of"
   agents ||--o{ agent_tags : "has"
   agents ||--|| agents_fts : "indexed by"
+  observers ||--o{ observations : "made"
 
-  leads {
-    text host PK
-    text source
+  cards {
+    text card_hash PK
+    text card_json
+    text protocol_version
     int first_seen
-    int next_check_at
-    int attempts
-    text last_result
+  }
+  observations {
+    text id PK
+    text observer FK
+    text host
+    text kind
+    int at
+    int ok
+    text card_hash FK
+    int http_status
+    int latency_ms
+    text error
   }
   agents {
     text host PK
+    text card_hash FK
     text card_url
-    text card_json
-    text card_hash
-    text protocol_version
     text name
     text description
     text provider
@@ -249,19 +270,11 @@ erDiagram
     int streaming
     int signed
     text status
+    real uptime_7d
+    int endpoint_ok
+    real quality
     int first_seen
     int last_seen
-    int last_changed
-  }
-  checks {
-    int id PK
-    text host FK
-    text kind
-    int at
-    int ok
-    int http_status
-    int latency_ms
-    text error
   }
   agent_tags {
     text host FK
@@ -273,18 +286,49 @@ erDiagram
     text skills
     text provider
   }
+  leads {
+    text host PK
+    text source
+    int first_seen
+    int next_check_at
+    int attempts
+    text last_result
+  }
   denylist {
     text host PK
     text reason
     int added_at
   }
+  observers {
+    text observer PK
+    real weight
+  }
+  node {
+    text id PK
+    int created_at
+  }
 ```
 
-- `checks.kind` is `card` or `endpoint`.
+Keys:
+
+| Table | Key | Reason |
+|---|---|---|
+| `cards` | SHA-256 of the card in canonical JSON (RFC 8785) | Two nodes that get the same card make the same key. |
+| `observations` | UUIDv7 | The observer sets the ID one time. The ID never changes. The time order of UUIDv7 keeps inserts and pruning fast. |
+| `agents` | Host | The host identifies the agent. |
+
+Rules:
+
+- `Ingest` is the only method that writes facts. It inserts the observation and its card with `INSERT OR IGNORE`. Then it rebuilds the agent view of that host.
+- `observations.kind` is `card` or `endpoint`. `observations.card_hash` is set when a card check gets a valid card.
+- The current card of an agent is the newest valid card from an observer with a weight more than 0.
+- `observers` holds this node with weight 1. In the MVP, there are no other observers.
+- `node` holds one row. The node creates it at the first start.
 - `agents.status` is `live`, `degraded` or `gone`. See section 7.5.
 - `agents_fts` is an FTS5 table. `skills` holds the skill names, descriptions, tags and examples.
+- The view does not include hosts in `denylist`.
 - Times are Unix seconds.
-- The index deletes `checks` rows that are older than 30 days.
+- The index deletes observations that are older than 30 days. Then it deletes cards that no row refers to.
 
 ## 7. Crawler
 
@@ -294,13 +338,14 @@ erDiagram
 flowchart LR
   S[Lead sources] -->|daily| L[(leads)]
   L -->|due| C[Card check]
-  C -->|valid card| A[(agents)]
+  C --> O[Observation]
+  E[Endpoint check] --> O
+  O -->|Ingest| F[(cards, observations)]
+  F -->|rebuild host| A[(agent view)]
   C -->|no card / invalid| B[Back off]
   B --> L
   A -->|every 30 min| C
-  A -->|daily| E[Endpoint check]
-  E --> K[(checks)]
-  C --> K
+  A -->|daily| E
 ```
 
 ### 7.2 Lead sources
@@ -328,7 +373,7 @@ The crawler uses a lead source only for hosts. It does not copy other data from 
 
 ### 7.4 Checks
 
-**Card check.** Get `https://<host>/.well-known/agent-card.json`. If the response is 404, get `/.well-known/agent.json`. Parse and validate the card. Record the result and the latency. If the card hash changes, update the agent and its full-text row.
+**Card check.** Get `https://<host>/.well-known/agent-card.json`. If the response is 404, get `/.well-known/agent.json`. Parse and validate the card. Make an observation with the result and the latency.
 
 **Endpoint check.** Send a request that does no work on the agent: get a task that does not exist, with a random ID.
 
@@ -340,6 +385,8 @@ The crawler uses a lead source only for hosts. It does not copy other data from 
 
 The crawler never sends `SendMessage`. This prevents costs and payments for the agent operator.
 
+Each check makes one observation. The crawler gives it to `Ingest`.
+
 ### 7.5 Schedule and status
 
 | Item | Value |
@@ -349,9 +396,11 @@ The crawler never sends `SendMessage`. This prevents costs and payments for the 
 | Lead with an error | Check again after 1 h, 6 h, 24 h, then every 7 days. |
 | Known agent, card check | Every 30 min. |
 | Known agent, endpoint check | Every 24 h. |
-| `live` | The last card check passed, and an endpoint check passed in the last 48 h. |
-| `degraded` | The last card check passed, but no endpoint check passed in the last 48 h. |
-| `gone` | All card checks failed for 7 days. Search does not show `gone` agents. |
+| `live` | The newest card observation passed, and an endpoint observation passed in the last 48 h. |
+| `degraded` | The newest card observation passed, but no endpoint observation passed in the last 48 h. |
+| `gone` | All card observations failed for 7 days. Search does not show `gone` agents. |
+
+The index uses only observations from observers with a weight more than 0.
 
 ### 7.6 Opt-out
 
@@ -369,8 +418,9 @@ relevance = −bm25(agents_fts)        (weights: name 4, skills 2, description 1
 quality   = 0.2 + 0.8 × (0.6 × uptime_7d + 0.3 × endpoint_ok + 0.1 × signed)
 ```
 
-- `uptime_7d` is the fraction of card checks that passed in the last 7 days.
-- `endpoint_ok` is 1 if an endpoint check passed in the last 48 h. Else it is 0.
+- `uptime_7d` = Σ(weight × ok) / Σ weight, for the card observations of the last 7 days.
+- `endpoint_ok` is 1 if an endpoint observation passed in the last 48 h. Else it is 0.
+- `weight` is the weight of the observer in `observers`. In the MVP, all observations have weight 1.
 - `signed` is 1 if the card has signatures. Else it is 0.
 - If the query is empty, sort by `quality`.
 
@@ -383,7 +433,7 @@ All responses are JSON. The base path is `/v1`.
 | Method and path | Purpose |
 |---|---|
 | `GET /v1/search` | Search agents. |
-| `GET /v1/agents/{host}` | Get one agent: the record, the last card and the last checks. |
+| `GET /v1/agents/{host}` | Get one agent: the agent view, the current card and the newest observations. |
 | `GET /v1/stats` | Get counts: leads, agents for each status, protocol versions. |
 | `GET /openapi.json` | Get the OpenAPI 3.1 description of this API. |
 | `GET /llms.txt` | Get a short plain-text guide for language models: what the index contains and how to search it. |
@@ -461,7 +511,10 @@ Configuration (environment variables):
 - Unit tests do not use the network. They use `net/http/httptest`.
 - `internal/card` uses fixture cards in `testdata/`: valid v1.0, valid v0.3, and invalid cards.
 - `internal/fetch` tests the limits, `robots.txt` and the SSRF block.
-- `internal/index` uses a temporary SQLite file.
+- `internal/index` uses a temporary SQLite file. It tests that:
+  - `Ingest` of the same observation two times stores one row.
+  - Two equal cards with different key order or whitespace get the same `card_hash`.
+  - A rebuild of the agent view from the facts gives the same view as the incremental updates.
 - `internal/api` checks that `/openapi.json` is valid OpenAPI 3.1 and agrees with the routes.
 - `internal/snapshot` uses an in-memory object store behind its storage interface. The tests do not use R2.
 - A manual end-to-end test runs the crawler with `echo-agent.mattiapapaccioli.com` in `seeds.txt`. The agent must become `live`.
