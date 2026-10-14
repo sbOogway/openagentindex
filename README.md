@@ -19,8 +19,23 @@ internal/      shared packages (agent card parsing/validation, storage, search)
 
 ## Development
 
-Go isn't required on the host; the toolchain runs from the official image:
+There is no hosted CI. [prek](https://github.com/j178/prek) runs the checks as git hooks. It downloads the Go toolchain and golangci-lint, so Go does not need to be installed.
 
 ```sh
-podman run --rm -v "$PWD":/src:Z -w /src docker.io/library/golang:1.27 go build ./...
+uv tool install prek    # once per machine
+prek install            # once per clone
+```
+
+| Hook stage | Checks |
+|---|---|
+| commit-msg | Conventional Commits title, at most 72 characters ([git-hooks](https://github.com/sbOogway/git-hooks)) |
+| pre-commit | golangci-lint (config verify, fmt, run), `go mod tidy -diff` |
+| pre-push | the pre-commit checks, `go test -race ./...`, `govulncheck ./...` |
+| post-merge | delete local branches whose upstream branch is gone |
+
+Run the checks by hand:
+
+```sh
+prek run --all-files
+prek run --all-files --hook-stage pre-push
 ```
