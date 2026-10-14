@@ -81,7 +81,12 @@ func (c *Crawler) check(ctx context.Context, host string) error {
 	if err != nil {
 		return err
 	}
-	if err := c.cfg.Store.Ingest(ctx, o); err != nil {
+	err = c.cfg.Store.Ingest(ctx, o)
+	if errors.Is(err, index.ErrInvalidObservation) {
+		c.cfg.Log.Warn("skip invalid observation", "host", host, "err", err)
+		return nil
+	}
+	if err != nil {
 		return fmt.Errorf("ingest %s: %w", host, err)
 	}
 	c.logResult(r)
