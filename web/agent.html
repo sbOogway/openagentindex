@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent · Open Agent Index</title>
+  <link rel="icon" href="data:,">
+  <script type="module" src="/src/agent.js"></script>
+</head>
+<body>
+  <!-- Agent data and agent replies are untrusted: use x-text and attribute bindings only, never x-html. -->
+  <main x-data="agent" class="mx-auto max-w-4xl space-y-4 px-4 py-6">
+    <header class="border-b pb-4">
+      <a href="index.html" class="text-lg font-semibold">Open Agent Index</a>
+    </header>
+
+    <div class="alert" data-variant="destructive" x-show="error" x-cloak>
+      <h2 x-text="error"></h2>
+    </div>
+
+    <template x-if="agent">
+      <article class="space-y-4">
+        <section class="space-y-2">
+          <h1 class="text-2xl font-semibold" x-text="agent.name || agent.host"></h1>
+          <p class="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
+            <a class="underline-offset-4 hover:underline" :href="cardURL" rel="noopener noreferrer" x-text="agent.host"></a>
+            <span class="badge" :data-variant="agent.status === 'ok' ? 'secondary' : 'destructive'" x-text="agent.status"></span>
+            <span x-show="agent.protocol_version" x-text="'v' + agent.protocol_version"></span>
+            <template x-for="b in agent.bindings || []" :key="b">
+              <span x-text="b"></span>
+            </template>
+          </p>
+          <p class="line-clamp-2" x-text="agent.description" :title="agent.description"></p>
+          <div class="flex flex-wrap gap-1" x-show="tags.length">
+            <template x-for="t in tags" :key="t">
+              <a class="badge" data-variant="outline" :href="searchURL({ tag: t })" x-text="t"></a>
+            </template>
+          </div>
+        </section>
+
+        <section class="card">
+          <header>
+            <h2>Chat</h2>
+            <p>Your browser sends the messages directly to the agent. Open Agent Index does not see them. Some agents charge for requests or need a key.</p>
+          </header>
+          <section class="space-y-3">
+            <p class="text-muted-foreground text-sm" x-show="chatUnavailable" x-text="chatUnavailable"></p>
+            <template x-if="!chatUnavailable">
+              <div class="space-y-3">
+                <div x-ref="log" class="bg-muted/40 flex h-80 flex-col gap-2 overflow-y-auto rounded-md border p-3" aria-live="polite">
+                  <p class="text-muted-foreground m-auto text-sm" x-show="messages.length === 0">Send a message to start.</p>
+                  <template x-for="(m, i) in messages" :key="i">
+                    <div class="max-w-[80%] shrink-0 rounded-md px-3 py-2 break-words whitespace-pre-wrap"
+                         :class="{
+                           'self-end bg-primary text-primary-foreground': m.who === 'user',
+                           'self-start bg-background border': m.who === 'agent',
+                           'self-start text-destructive': m.who === 'error',
+                         }"
+                         x-text="m.text"></div>
+                  </template>
+                </div>
+                <form class="flex gap-2" @submit.prevent="sendMessage()">
+                  <input x-ref="input" class="input flex-1" x-model="text" placeholder="Message" aria-label="Message" autocomplete="off">
+                  <button class="btn" type="submit" :disabled="sending" x-text="sending ? 'Sending…' : 'Send'"></button>
+                </form>
+              </div>
+            </template>
+          </section>
+        </section>
+
+        <details class="card py-4">
+          <summary class="flex cursor-pointer gap-2 px-6 text-sm">
+            <span class="font-medium">Checks</span>
+            <span class="text-muted-foreground" x-text="'last: ' + lastCheck"></span>
+          </summary>
+          <section class="pt-2">
+            <div class="table-container">
+              <table class="table">
+                <thead>
+                  <tr><th>Time</th><th>Result</th><th>HTTP</th><th>Latency</th><th>Error</th></tr>
+                </thead>
+                <tbody>
+                  <template x-for="o in agent.observations" :key="o.id">
+                    <tr>
+                      <td x-text="time(o.at)"></td>
+                      <td><span class="badge" :data-variant="o.ok ? 'secondary' : 'destructive'" x-text="o.ok ? 'ok' : 'failed'"></span></td>
+                      <td x-text="o.http_status || ''"></td>
+                      <td x-text="o.latency_ms + ' ms'"></td>
+                      <td class="whitespace-normal" x-text="o.error || ''"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </details>
+      </article>
+    </template>
+  </main>
+</body>
+</html>
