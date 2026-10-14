@@ -9,9 +9,14 @@ import (
 var queryFiles embed.FS
 
 var (
-	querySearch       = query("search")
-	queryAgent        = query("agent")
-	queryObservations = query("observations")
+	querySearch            = query("search")
+	queryAgent             = query("agent")
+	queryObservations      = query("observations")
+	queryNodeSelect        = query("node_select")
+	queryNodeInsert        = query("node_insert")
+	queryObserverInsert    = query("observer_insert")
+	queryCardInsert        = query("card_insert")
+	queryObservationInsert = query("observation_insert")
 )
 
 // query returns the SQL of queries/<name>.sql. The files are embedded at build time,
