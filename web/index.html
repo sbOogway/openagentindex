@@ -3,29 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="oai-api" content="http://localhost:8080">
   <title>Open Agent Index</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="style.css">
-  <script type="module" src="app.js"></script>
+  <script type="module" src="/src/search.js"></script>
 </head>
-<body data-page="search">
-  <header><a href="index.html">Open Agent Index</a></header>
-  <main>
-    <form id="search">
-      <input name="q" type="search" placeholder="Search agents" aria-label="Search text">
-      <select name="status" aria-label="Status">
+<body>
+  <!-- Agent data is untrusted: use x-text and attribute bindings only, never x-html. -->
+  <main x-data="search" class="mx-auto max-w-4xl space-y-4 px-4 py-6">
+    <header class="border-b pb-4">
+      <a href="index.html" class="text-lg font-semibold">Open Agent Index</a>
+    </header>
+
+    <form class="flex gap-2" @submit.prevent="go(0)">
+      <input class="input flex-1" type="search" x-model="q" placeholder="Search agents" aria-label="Search text">
+      <select class="select w-44" x-model="status" @change="go(0)" aria-label="Status">
         <option value="ok">Valid card</option>
         <option value="failed">No valid card</option>
         <option value="any">All hosts</option>
       </select>
-      <button>Search</button>
+      <button class="btn" type="submit">Search</button>
     </form>
-    <p id="message" role="status"></p>
-    <ul id="results"></ul>
-    <nav id="pages">
-      <button id="prev" type="button">Previous</button>
-      <button id="next" type="button">Next</button>
+
+    <div class="alert" data-variant="destructive" x-show="error" x-cloak>
+      <h2 x-text="error"></h2>
+    </div>
+    <p class="text-muted-foreground text-sm" x-show="!error" x-text="summary"></p>
+
+    <ul class="space-y-3">
+      <template x-for="r in results" :key="r.host">
+        <li class="card">
+          <header>
+            <h2 class="flex flex-wrap items-baseline gap-2">
+              <span x-show="r.name" x-text="r.name"></span>
+              <a class="text-muted-foreground text-sm font-normal underline-offset-4 hover:underline" :href="agentURL(r.host)" x-text="r.host"></a>
+            </h2>
+            <p class="line-clamp-2" x-text="r.description || r.error"></p>
+          </header>
+          <footer class="text-muted-foreground gap-2 text-sm">
+            <span class="badge" :data-variant="r.status === 'ok' ? 'secondary' : 'destructive'" x-text="r.status"></span>
+            <span x-show="r.protocol_version" x-text="'v' + r.protocol_version"></span>
+            <span x-text="'checked ' + time(r.last_checked)"></span>
+          </footer>
+        </li>
+      </template>
+    </ul>
+
+    <nav class="flex justify-between" x-show="!error && total > 0" x-cloak>
+      <button class="btn" data-variant="outline" type="button" :disabled="offset === 0" @click="prev()">Previous</button>
+      <button class="btn" data-variant="outline" type="button" :disabled="last >= total" @click="next()">Next</button>
     </nav>
   </main>
 </body>

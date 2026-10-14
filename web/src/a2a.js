@@ -3,7 +3,7 @@
 const timeoutMs = 60000;
 
 // endpoint returns the JSON-RPC URL of the card and whether it uses v0.3, or null.
-function endpoint(card) {
+export function endpoint(card) {
   for (const i of card.supportedInterfaces || []) {
     if (i.protocolBinding === "JSONRPC" && i.url?.startsWith("https://")) {
       return { url: i.url, v03: String(i.protocolVersion || "").startsWith("0.") };
@@ -50,7 +50,8 @@ function reply(result) {
   return { text: lines.filter(Boolean).join("\n"), contextId: task.contextId };
 }
 
-async function send(ep, text, contextId) {
+// send sends one text message and returns the reply text and the contextId of the conversation.
+export async function send(ep, text, contextId) {
   const req = request(ep, text, contextId);
   let resp;
   try {
@@ -68,40 +69,4 @@ async function send(ep, text, contextId) {
   if (!body) throw new Error(`The agent gave status ${resp.status} without a JSON-RPC response.`);
   if (body.error) throw new Error(`The agent gave error ${body.error.code}: ${body.error.message}`);
   return reply(body.result || {});
-}
-
-export function mountChat(card, section, el) {
-  const ep = card && endpoint(card);
-  if (!ep) {
-    section.querySelector("#chat-note").textContent = card
-      ? "This agent has no HTTPS JSON-RPC endpoint. The chat is not available."
-      : "This host has no valid agent card. The chat is not available.";
-    section.querySelector("#chat-form").hidden = true;
-    return;
-  }
-  const log = section.querySelector("#chat-log");
-  const form = section.querySelector("#chat-form");
-  let contextId;
-  const add = (who, text) => {
-    log.append(el("div", text, "msg " + who));
-    log.scrollTop = log.scrollHeight;
-  };
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = form.text.value.trim();
-    if (!text) return;
-    form.text.value = "";
-    form.send.disabled = true;
-    add("user", text);
-    try {
-      const r = await send(ep, text, contextId);
-      contextId = r.contextId || contextId;
-      add("agent", r.text || "(empty reply)");
-    } catch (err) {
-      add("error", err.message);
-    } finally {
-      form.send.disabled = false;
-      form.text.focus();
-    }
-  });
 }
