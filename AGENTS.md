@@ -51,6 +51,9 @@
 - Start every feature or issue on a new branch from an up-to-date `main`. Never commit to `main` directly.
 - Name the branch after the change type and topic, e.g. `feat/card-validation`, `fix/crawler-timeout`.
 - Before creating the branch, settle the design questions and prepare the test plan. Treat the test plan as approved without asking the user.
+- Keep each pull request small, so that the user can review it in a few minutes. Try to stay below 200 changed lines, tests not included.
+- Write as little code as possible for the change. Do not add code for future work.
+- When a task needs more code, split it into a sequence of pull requests. Each pull request builds and passes the tests on its own.
 - Open a draft pull request on GitHub as soon as the branch has its first commit, linking the issue it addresses and including the approved test plan.
 - Do the work on that branch, then mark the pull request ready for review.
 - Stop and wait for the user's code review. Do not merge the pull request yourself.
