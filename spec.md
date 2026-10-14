@@ -490,7 +490,8 @@ Search result item:
 
 - A static website in `web/`, built with npm: Vite (build and development server), Tailwind CSS with Basecoat (components), Alpine.js (data binding). The build output is static files only.
 - The website reads the API URL from `VITE_API_URL` at build time.
-- One search page with filters, and one page for each agent.
+- One search page with filters (text, status, tags, binding, version), and one page for each agent.
+- The agent page shows the name, host, status, version, bindings, a short description and the tags, then the chat and the check history. It does not show the full card or the skill texts.
 - Show agent card text as text only. Never insert it as HTML (no `x-html`, no `innerHTML`). Agent cards are untrusted input.
 - If the API does not respond, show a message that search is not available.
 - The agent page has a chat. The browser of the user sends A2A messages directly to the JSON-RPC endpoint of the agent: `SendMessage` for v1.0, `message/send` for v0.3. The website and the API do not relay messages. The chat works only with agents that allow CORS. Show agent replies as text only.
