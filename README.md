@@ -33,6 +33,14 @@ prek install            # once per clone
 | pre-push | the pre-commit checks, `go test -race ./...`, `govulncheck ./...` |
 | post-merge | delete local branches whose upstream branch is gone |
 
+Build, run and test with `make` (`make help` shows all targets). If Go is not installed, `make` uses the Go toolchain of prek.
+
+```sh
+make run-crawler    # one crawl of seeds.txt into data/oai.db
+make run-api
+make test
+```
+
 Run the checks by hand:
 
 ```sh
