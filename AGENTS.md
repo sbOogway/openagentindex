@@ -39,6 +39,13 @@
 - Keep coupling loose: depend on small interfaces, not on concrete types. Define an interface in the package that uses it.
 - Split functions inside a package freely, but do not grow its exported API to do so.
 
+## SQL
+
+- Keep SQL out of Go source files. Write each query in its own file in `queries/<name>.sql` of the package, and embed the files with `go:embed`.
+- Use named parameters (`:name` with `sql.Named`) in query files.
+- Write schema changes as goose migrations in `internal/index/migrations` (spec section 6).
+- Tests can use short inline SQL to check the database.
+
 ## Testing
 
 - Before you create a branch, write a test plan: the behaviours to test and how to test each one.
