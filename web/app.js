@@ -1,5 +1,7 @@
 // Agent cards are untrusted input: set text with textContent only, never as HTML.
 
+import { mountChat } from "./chat.js";
+
 const api = document.querySelector('meta[name="oai-api"]').content;
 const pageSize = 20;
 const $ = (id) => document.getElementById(id);
@@ -109,6 +111,7 @@ async function agentPage() {
     $("skills").replaceChildren(...(skills.length ? skills.map(skillItem) : [el("li", "No skills.")]));
     $("observations").replaceChildren(...a.observations.map(observationRow));
     $("card").textContent = a.card ? JSON.stringify(a.card, null, 2) : "No valid card.";
+    mountChat(a.card, $("chat"), el);
     $("agent").hidden = false;
   } catch (err) {
     $("message").textContent = err.message;

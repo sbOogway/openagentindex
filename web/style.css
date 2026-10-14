@@ -58,3 +58,24 @@ pre {
   border: 1px solid var(--line);
   font-size: .85rem;
 }
+
+#chat-log {
+  max-height: 24rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin: .5rem 0;
+}
+
+.msg {
+  max-width: 80%;
+  padding: .4rem .7rem;
+  border-radius: .5rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg.user { align-self: flex-end; background: #2563eb22; }
+.msg.agent { align-self: flex-start; background: #6b728022; }
+.msg.error { align-self: flex-start; color: var(--failed); }

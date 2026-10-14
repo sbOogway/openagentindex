@@ -19,6 +19,15 @@
       <p id="description"></p>
       <h2>Skills</h2>
       <ul id="skills"></ul>
+      <section id="chat">
+        <h2>Chat</h2>
+        <p id="chat-note" class="meta">Your browser sends the messages directly to the agent. Open Agent Index does not see them. Some agents charge for requests or need a key.</p>
+        <div id="chat-log" aria-live="polite"></div>
+        <form id="chat-form">
+          <input name="text" placeholder="Message" aria-label="Message" autocomplete="off">
+          <button name="send">Send</button>
+        </form>
+      </section>
       <h2>Checks</h2>
       <table>
         <thead><tr><th>Time</th><th>Kind</th><th>Result</th><th>HTTP</th><th>Latency</th><th>Error</th></tr></thead>
