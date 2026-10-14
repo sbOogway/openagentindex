@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -15,9 +16,16 @@ const (
 	StatusFailed = "failed"
 	StatusAny    = "any"
 
-	MaxLimit = 100
+	MaxLimit    = 100
+	MaxTags     = 10
+	MaxTagLimit = 200
 
 	agentObservations = 20
+)
+
+var (
+	bindings = []string{"JSONRPC", "HTTP+JSON", "GRPC"}
+	versions = []string{"1.0", "0.3"}
 )
 
 var (
@@ -27,11 +35,15 @@ var (
 
 // Query selects hosts. Text matches the host, name or description.
 // Status is StatusOK, StatusFailed or StatusAny. It uses the newest card check of each host.
+// An empty Binding or Version matches all hosts. A host must have all Tags (any case).
 type Query struct {
-	Text   string
-	Status string
-	Limit  int
-	Offset int
+	Text    string
+	Status  string
+	Tags    []string
+	Binding string
+	Version string
+	Limit   int
+	Offset  int
 }
 
 // Summary is the newest card check of a host and the fields of its current card.
@@ -44,11 +56,18 @@ type Summary struct {
 	HTTPStatus      int
 	Error           string
 	LastChecked     time.Time
+	Tags            []string
+	Bindings        []string
 }
 
 type Results struct {
 	Total  int
 	Agents []Summary
+}
+
+type TagCount struct {
+	Tag   string
+	Hosts int
 }
 
 // Agent is a host with its current card (nil if none) and its newest observations.
@@ -74,8 +93,13 @@ func (i *Index) Search(ctx context.Context, q Query) (Results, error) {
 	if err := validateQuery(q); err != nil {
 		return Results{}, err
 	}
+	tags, err := json.Marshal(normalizeTags(q.Tags))
+	if err != nil {
+		return Results{}, err
+	}
 	rows, err := i.db.QueryContext(ctx, querySearch,
 		sql.Named("status", q.Status), sql.Named("text", likePattern(q.Text)),
+		sql.Named("binding", q.Binding), sql.Named("version", q.Version), sql.Named("tags", string(tags)),
 		sql.Named("limit", q.Limit), sql.Named("offset", q.Offset))
 	if err != nil {
 		return Results{}, err
@@ -132,8 +156,48 @@ func (i *Index) observations(ctx context.Context, host string) ([]Observation, e
 	return out, rows.Err()
 }
 
+// Tags returns the most common tags of the hosts with a current card. Prefix filters the tags.
+func (i *Index) Tags(ctx context.Context, prefix string, limit int) ([]TagCount, error) {
+	if limit < 1 || limit > MaxTagLimit {
+		return nil, fmt.Errorf("%w: limit %d is not 1 to %d", ErrInvalidQuery, limit, MaxTagLimit)
+	}
+	pattern := ""
+	if p := strings.ToLower(strings.TrimSpace(prefix)); p != "" {
+		pattern = escapeLike(p) + "%"
+	}
+	rows, err := i.db.QueryContext(ctx, queryTags, sql.Named("prefix", pattern), sql.Named("limit", limit))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []TagCount{}
+	for rows.Next() {
+		var t TagCount
+		if err := rows.Scan(&t.Tag, &t.Hosts); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 func summaryFields(s *Summary) []any {
-	return []any{&s.Host, &s.Name, &s.Description, &s.ProtocolVersion, &s.OK, &s.HTTPStatus, &s.Error, unixTime{&s.LastChecked}}
+	return []any{
+		&s.Host, &s.Name, &s.Description, &s.ProtocolVersion, &s.OK, &s.HTTPStatus, &s.Error,
+		unixTime{&s.LastChecked}, jsonStrings{&s.Tags}, jsonStrings{&s.Bindings},
+	}
+}
+
+// jsonStrings scans a JSON array of strings.
+type jsonStrings struct{ s *[]string }
+
+func (j jsonStrings) Scan(v any) error {
+	text, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("JSON array: unexpected type %T", v)
+	}
+	return json.Unmarshal([]byte(text), j.s)
 }
 
 type unixTime struct{ t *time.Time }
@@ -155,8 +219,24 @@ func validateQuery(q Query) error {
 		return fmt.Errorf("%w: limit %d is not 1 to %d", ErrInvalidQuery, q.Limit, MaxLimit)
 	case q.Offset < 0:
 		return fmt.Errorf("%w: offset %d", ErrInvalidQuery, q.Offset)
+	case q.Binding != "" && !slices.Contains(bindings, q.Binding):
+		return fmt.Errorf("%w: binding %q is not one of %s", ErrInvalidQuery, q.Binding, strings.Join(bindings, ", "))
+	case q.Version != "" && !slices.Contains(versions, q.Version):
+		return fmt.Errorf("%w: version %q is not one of %s", ErrInvalidQuery, q.Version, strings.Join(versions, ", "))
+	case len(q.Tags) > MaxTags:
+		return fmt.Errorf("%w: more than %d tags", ErrInvalidQuery, MaxTags)
+	case slices.Contains(normalizeTags(q.Tags), ""):
+		return fmt.Errorf("%w: empty tag", ErrInvalidQuery)
 	}
 	return nil
+}
+
+func normalizeTags(tags []string) []string {
+	out := make([]string, len(tags))
+	for i, t := range tags {
+		out[i] = strings.ToLower(strings.TrimSpace(t))
+	}
+	return out
 }
 
 func likePattern(text string) string {
@@ -164,5 +244,9 @@ func likePattern(text string) string {
 	if text == "" {
 		return ""
 	}
-	return "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(text) + "%"
+	return "%" + escapeLike(text) + "%"
+}
+
+func escapeLike(text string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(text)
 }

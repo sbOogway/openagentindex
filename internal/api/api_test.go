@@ -82,7 +82,7 @@ func TestSearch(t *testing.T) {
 	assertOK(t, w, `{"total": 7, "results": [{
 		"host": "a.example", "name": "Gamma", "description": "Echoes", "protocol_version": "1.0",
 		"status": "ok", "http_status": 200, "last_checked": 1792000000}]}`)
-	if want := (index.Query{Status: index.StatusOK, Limit: 20}); ix.query != want {
+	if want := (index.Query{Status: index.StatusOK, Limit: 20}); !reflect.DeepEqual(ix.query, want) {
 		t.Errorf("query = %+v, want %+v", ix.query, want)
 	}
 	if cc := w.Header().Get("Cache-Control"); cc != "public, max-age=60" {
@@ -94,7 +94,7 @@ func TestSearchParameters(t *testing.T) {
 	ix := &fakeIndex{}
 	w := serve(t, ix, "", "/v1/search?q=echo+bot&status=failed&limit=5&offset=10")
 	assertOK(t, w, `{"total": 0, "results": []}`)
-	if want := (index.Query{Text: "echo bot", Status: index.StatusFailed, Limit: 5, Offset: 10}); ix.query != want {
+	if want := (index.Query{Text: "echo bot", Status: index.StatusFailed, Limit: 5, Offset: 10}); !reflect.DeepEqual(ix.query, want) {
 		t.Errorf("query = %+v, want %+v", ix.query, want)
 	}
 }

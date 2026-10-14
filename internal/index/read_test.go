@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -66,8 +67,9 @@ func TestSearchSummary(t *testing.T) {
 	want := Summary{
 		Host: "was-up.example", Name: "Gamma", Description: "Was up", ProtocolVersion: "1.0",
 		HTTPStatus: 404, Error: "card request: status 404", LastChecked: time.Unix(200, 0),
+		Tags: []string{}, Bindings: []string{"JSONRPC"},
 	}
-	if r.Total != 1 || len(r.Agents) != 1 || r.Agents[0] != want {
+	if r.Total != 1 || len(r.Agents) != 1 || !reflect.DeepEqual(r.Agents[0], want) {
 		t.Errorf("Search = %+v, want one result %+v", r, want)
 	}
 }
@@ -126,6 +128,10 @@ func TestSearchInvalidQuery(t *testing.T) {
 		{Status: StatusAny, Limit: 0},
 		{Status: StatusAny, Limit: MaxLimit + 1},
 		{Status: StatusAny, Limit: 10, Offset: -1},
+		{Status: StatusAny, Limit: 10, Binding: "MCP"},
+		{Status: StatusAny, Limit: 10, Version: "2.0"},
+		{Status: StatusAny, Limit: 10, Tags: []string{" "}},
+		{Status: StatusAny, Limit: 10, Tags: make([]string, MaxTags+1)},
 	} {
 		if _, err := i.Search(context.Background(), q); !errors.Is(err, ErrInvalidQuery) {
 			t.Errorf("Search(%+v) error = %v, want ErrInvalidQuery", q, err)
@@ -207,5 +213,108 @@ func TestOpenReadOnly(t *testing.T) {
 func TestOpenReadOnlyMissingFile(t *testing.T) {
 	if _, err := OpenReadOnly(context.Background(), t.TempDir()+"/missing.db"); err == nil {
 		t.Error("OpenReadOnly of a missing file: no error")
+	}
+}
+
+// Cards with tags, bindings and versions for the filter tests.
+const (
+	cardV1Tags = `{"name":"Echo","supportedInterfaces":[
+		{"url":"https://e/a2a","protocolBinding":"JSONRPC","protocolVersion":"1.0"},
+		{"url":"https://e/rest","protocolBinding":"HTTP+JSON","protocolVersion":"1.0"},
+		{"url":"https://e/mcp","protocolBinding":"MCP"}],
+		"skills":[{"id":"a","tags":["Test"," echo "]},{"id":"b","tags":["test","stream",""]}]}`
+	cardV03Tags = `{"name":"Old","protocolVersion":"0.3.0","url":"https://o/a2a",
+		"additionalInterfaces":[{"url":"https://o/grpc","transport":"GRPC"}],
+		"skills":[{"id":"a","tags":["test","weather"]}]}`
+	cardNoSkills = `{"name":"Bare","protocolVersion":"1.0.1","url":"https://b/a2a","preferredTransport":"HTTP+JSON"}`
+)
+
+func seedTagged(t *testing.T) *Index {
+	t.Helper()
+	i, _ := openTemp(t)
+	check(t, i, "echo.example", 100, cardV1Tags)
+	check(t, i, "old.example", 100, cardV03Tags)
+	check(t, i, "bare.example", 100, cardNoSkills)
+	check(t, i, "dead.example", 100, "")
+	return i
+}
+
+func TestSearchTagsAndBindings(t *testing.T) {
+	i := seedTagged(t)
+	got := map[string][2][]string{}
+	for _, s := range search(t, i, Query{}).Agents {
+		got[s.Host] = [2][]string{s.Tags, s.Bindings}
+	}
+	want := map[string][2][]string{
+		"echo.example": {{"echo", "stream", "test"}, {"HTTP+JSON", "JSONRPC"}},
+		"old.example":  {{"test", "weather"}, {"GRPC", "JSONRPC"}},
+		"bare.example": {{}, {"HTTP+JSON"}},
+		"dead.example": {{}, {}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("tags and bindings = %v, want %v", got, want)
+	}
+}
+
+func TestSearchByTagBindingVersion(t *testing.T) {
+	i := seedTagged(t)
+	tests := []struct {
+		name  string
+		query Query
+		want  []string
+	}{
+		{name: "one tag", query: Query{Tags: []string{"test"}}, want: []string{"echo.example", "old.example"}},
+		{name: "tags need all, any case", query: Query{Tags: []string{"TEST", " Echo "}}, want: []string{"echo.example"}},
+		{name: "unknown tag", query: Query{Tags: []string{"nope"}}},
+		{name: "binding JSONRPC", query: Query{Binding: "JSONRPC"}, want: []string{"echo.example", "old.example"}},
+		{name: "binding GRPC", query: Query{Binding: "GRPC"}, want: []string{"old.example"}},
+		{name: "binding HTTP+JSON", query: Query{Binding: "HTTP+JSON"}, want: []string{"bare.example", "echo.example"}},
+		{name: "version 1.0 matches 1.0.1", query: Query{Version: "1.0"}, want: []string{"bare.example", "echo.example"}},
+		{name: "version 0.3 matches 0.3.0", query: Query{Version: "0.3"}, want: []string{"old.example"}},
+		{name: "all filters", query: Query{Tags: []string{"test"}, Binding: "GRPC", Version: "0.3"}, want: []string{"old.example"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hostsOf(search(t, i, tt.query)); !slices.Equal(got, tt.want) {
+				t.Errorf("hosts = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTags(t *testing.T) {
+	i := seedTagged(t)
+	check(t, i, "was-tagged.example", 100, cardV03Tags)
+	check(t, i, "was-tagged.example", 200, "")
+	tests := []struct {
+		name   string
+		prefix string
+		limit  int
+		want   []TagCount
+	}{
+		{name: "by count, then name", limit: 10, want: []TagCount{{"test", 3}, {"weather", 2}, {"echo", 1}, {"stream", 1}}},
+		{name: "limit", limit: 1, want: []TagCount{{"test", 3}}},
+		{name: "prefix, any case", prefix: " WE", limit: 10, want: []TagCount{{"weather", 2}}},
+		{name: "prefix is literal", prefix: "%", limit: 10, want: []TagCount{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := i.Tags(context.Background(), tt.prefix, tt.limit)
+			if err != nil {
+				t.Fatalf("Tags: %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Tags = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTagsInvalidLimit(t *testing.T) {
+	i, _ := openTemp(t)
+	for _, limit := range []int{0, MaxTagLimit + 1} {
+		if _, err := i.Tags(context.Background(), "", limit); !errors.Is(err, ErrInvalidQuery) {
+			t.Errorf("Tags(limit %d) error = %v, want ErrInvalidQuery", limit, err)
+		}
 	}
 }
