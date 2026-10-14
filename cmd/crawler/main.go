@@ -48,9 +48,10 @@ func run(log *slog.Logger) error {
 	defer idx.Close()
 
 	userAgent := fmt.Sprintf("OpenAgentIndexBot/%s (+%s)", version, cfg.contactURL)
+	client := fetch.New(userAgent)
 	c := crawler.New(crawler.Config{
-		Sources: []crawler.Source{leads.SeedFile{Path: cfg.seedsPath}},
-		Prober:  probe.New(fetch.New(userAgent)),
+		Sources: []crawler.Source{leads.SeedFile{Path: cfg.seedsPath}, leads.NewA2ARegistry(client)},
+		Prober:  probe.New(client),
 		Store:   idx,
 		Log:     log,
 	})
