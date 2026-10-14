@@ -1,20 +1,16 @@
 # Go is not always installed on the host. Then use the toolchain that prek downloads.
 GO ?= $(or $(shell command -v go),$(lastword $(sort $(wildcard $(HOME)/.cache/prek/tools/go/*/bin/go))))
 
-OAI_DB_PATH    ?= data/oai.db
-OAI_SEEDS_PATH ?= seeds.txt
-export OAI_DB_PATH OAI_SEEDS_PATH OAI_CONTACT_URL OAI_LISTEN_ADDR
-
 .PHONY: help run-crawler run-api test build lint check clean go-check
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
 
-run-crawler: go-check ## Run one crawl (OAI_DB_PATH, OAI_SEEDS_PATH)
-	@mkdir -p $(dir $(OAI_DB_PATH))
+run-crawler: go-check ## Run one crawl (config: oai.toml, OAI_* variables)
+	@mkdir -p data
 	$(GO) run ./cmd/crawler
 
-run-api: go-check ## Run the API
+run-api: go-check ## Run the API (config: oai.toml, OAI_* variables)
 	$(GO) run ./cmd/api
 
 test: go-check ## Run the unit tests with the race detector

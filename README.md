@@ -35,6 +35,8 @@ prek install            # once per clone
 
 Build, run and test with `make` (`make help` shows all targets). If Go is not installed, `make` uses the Go toolchain of prek.
 
+The binaries read `oai.toml` (local development values). Each `OAI_*` environment variable overrides one key, for example `OAI_LISTEN_ADDR=:9090 make run-api`. See spec section 11.
+
 ```sh
 make run-crawler    # one crawl of seeds.txt into data/oai.db
 make run-api
