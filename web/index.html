@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="oai-api" content="http://localhost:8080">
+  <title>Open Agent Index</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body data-page="search">
+  <header><a href="index.html">Open Agent Index</a></header>
+  <main>
+    <form id="search">
+      <input name="q" type="search" placeholder="Search agents" aria-label="Search text">
+      <select name="status" aria-label="Status">
+        <option value="ok">Valid card</option>
+        <option value="failed">No valid card</option>
+        <option value="any">All hosts</option>
+      </select>
+      <button>Search</button>
+    </form>
+    <p id="message" role="status"></p>
+    <ul id="results"></ul>
+    <nav id="pages">
+      <button id="prev" type="button">Previous</button>
+      <button id="next" type="button">Next</button>
+    </nav>
+  </main>
+</body>
+</html>

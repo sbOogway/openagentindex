@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="oai-api" content="http://localhost:8080">
+  <title>Agent · Open Agent Index</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body data-page="agent">
+  <header><a href="index.html">Open Agent Index</a></header>
+  <main>
+    <p id="message" role="status"></p>
+    <article id="agent" hidden>
+      <h1 id="name"></h1>
+      <p><a id="card-url" rel="noopener noreferrer"></a> <span id="status" class="status"></span> <span id="version"></span></p>
+      <p id="description"></p>
+      <h2>Skills</h2>
+      <ul id="skills"></ul>
+      <h2>Checks</h2>
+      <table>
+        <thead><tr><th>Time</th><th>Kind</th><th>Result</th><th>HTTP</th><th>Latency</th><th>Error</th></tr></thead>
+        <tbody id="observations"></tbody>
+      </table>
+      <h2>Agent card</h2>
+      <pre id="card"></pre>
+    </article>
+  </main>
+</body>
+</html>
