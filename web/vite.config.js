@@ -2,8 +2,11 @@ import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 
-// The API allows the development origin with cors_origin in oai.toml.
-const devPort = 8000;
+// The API allows the development origin with cors_origin in oai.toml (OAI_CORS_ORIGIN).
+const devPort = Number(process.env.OAI_WEB_PORT || 8000);
+if (!Number.isInteger(devPort) || devPort < 1 || devPort > 65535) {
+  throw new Error(`OAI_WEB_PORT is not a port: ${process.env.OAI_WEB_PORT}`);
+}
 
 const config = {
   plugins: [tailwindcss()],

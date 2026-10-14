@@ -13,7 +13,7 @@ run-crawler: go-check ## Run one crawl (config: oai.toml, OAI_* variables)
 run-api: go-check ## Run the API (config: oai.toml, OAI_* variables)
 	$(GO) run ./cmd/api
 
-run-web: web/node_modules ## Run the website on http://localhost:8000 (Vite). Needs run-api.
+run-web: web/node_modules ## Run the website on http://localhost:8000 (OAI_WEB_PORT). Needs run-api.
 	npm --prefix web run dev
 
 build-web: web/node_modules ## Build the website into web/dist (needs VITE_API_URL)

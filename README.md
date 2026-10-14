@@ -37,6 +37,13 @@ Build, run and test with `make` (`make help` shows all targets). If Go is not in
 
 The binaries read `oai.toml` (local development values). Each `OAI_*` environment variable overrides one key, for example `OAI_LISTEN_ADDR=:9090 make run-api`. See spec section 11.
 
+The website development server uses port 8000. Change it with `OAI_WEB_PORT`, and allow the new origin in the API:
+
+```sh
+OAI_CORS_ORIGIN=http://localhost:8100 make run-api
+OAI_WEB_PORT=8100 make run-web
+```
+
 ```sh
 make run-crawler    # one crawl of seeds.txt into data/oai.db
 make run-api        # API on localhost:8080 (oai.toml), reads data/oai.db
