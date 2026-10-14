@@ -15,34 +15,77 @@
     </header>
 
     <form class="flex gap-2" @submit.prevent="go(0)">
-      <input class="input flex-1" type="search" x-model="q" placeholder="Search agents" aria-label="Search text">
-      <select class="select w-44" x-model="status" @change="go(0)" aria-label="Status">
+      <input class="input flex-1" type="search" x-model="q" placeholder="Search name, host or description" aria-label="Search text">
+      <button class="btn" type="submit">Search</button>
+    </form>
+
+    <section class="flex flex-wrap items-center gap-2" aria-label="Filters">
+      <select class="select w-auto" x-model="status" @change="go(0)" aria-label="Status">
         <option value="ok">Valid card</option>
         <option value="failed">No valid card</option>
         <option value="any">All hosts</option>
       </select>
-      <button class="btn" type="submit">Search</button>
-    </form>
+      <select class="select w-auto" x-model="binding" @change="go(0)" aria-label="Binding">
+        <option value="">Any binding</option>
+        <option value="JSONRPC">JSON-RPC</option>
+        <option value="HTTP+JSON">HTTP+JSON</option>
+        <option value="GRPC">gRPC</option>
+      </select>
+      <select class="select w-auto" x-model="version" @change="go(0)" aria-label="Protocol version">
+        <option value="">Any version</option>
+        <option value="1.0">v1.0</option>
+        <option value="0.3">v0.3</option>
+      </select>
+      <form class="flex-1" @submit.prevent="addTag()">
+        <input class="input min-w-40" list="tag-suggestions" x-model="tagInput"
+               @input.debounce.200ms="suggest()" placeholder="Add tag, then Enter" aria-label="Add tag">
+        <datalist id="tag-suggestions">
+          <template x-for="s in suggestions" :key="s.tag">
+            <option :value="s.tag" x-text="s.hosts === 1 ? '1 agent' : s.hosts + ' agents'"></option>
+          </template>
+        </datalist>
+      </form>
+      <button class="btn" data-variant="ghost" type="button" x-show="filtered" x-cloak @click="clearFilters()">Clear</button>
+    </section>
+
+    <div class="flex flex-wrap items-center gap-1" x-show="tags.length" x-cloak>
+      <span class="text-muted-foreground text-sm">Tags:</span>
+      <template x-for="t in tags" :key="t">
+        <button class="badge" type="button" @click="removeTag(t)" :aria-label="'Remove tag ' + t">
+          <span x-text="t"></span> ×
+        </button>
+      </template>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-1" x-show="popular.length && !tags.length" x-cloak>
+      <span class="text-muted-foreground text-sm">Popular:</span>
+      <template x-for="p in popular" :key="p.tag">
+        <button class="badge" data-variant="outline" type="button" @click="addTag(p.tag)" x-text="p.tag"></button>
+      </template>
+    </div>
 
     <div class="alert" data-variant="destructive" x-show="error" x-cloak>
       <h2 x-text="error"></h2>
     </div>
     <p class="text-muted-foreground text-sm" x-show="!error" x-text="summary"></p>
 
-    <ul class="space-y-3">
+    <ul class="space-y-2">
       <template x-for="r in results" :key="r.host">
-        <li class="card">
+        <li class="card gap-2 py-4">
           <header>
-            <h2 class="flex flex-wrap items-baseline gap-2">
-              <span x-show="r.name" x-text="r.name"></span>
-              <a class="text-muted-foreground text-sm font-normal underline-offset-4 hover:underline" :href="agentURL(r.host)" x-text="r.host"></a>
+            <h2 class="flex flex-wrap items-baseline gap-x-2">
+              <a class="underline-offset-4 hover:underline" :href="agentURL(r.host)" x-text="r.name || r.host"></a>
+              <span class="text-muted-foreground text-sm font-normal" x-show="r.name" x-text="r.host"></span>
             </h2>
-            <p class="line-clamp-2" x-text="r.description || r.error"></p>
+            <p class="truncate" x-text="r.description || r.error"></p>
           </header>
-          <footer class="text-muted-foreground gap-2 text-sm">
+          <footer class="flex-wrap gap-1 text-sm">
             <span class="badge" :data-variant="r.status === 'ok' ? 'secondary' : 'destructive'" x-text="r.status"></span>
-            <span x-show="r.protocol_version" x-text="'v' + r.protocol_version"></span>
-            <span x-text="'checked ' + time(r.last_checked)"></span>
+            <span class="text-muted-foreground" x-show="r.protocol_version" x-text="'v' + r.protocol_version"></span>
+            <template x-for="t in (r.tags || []).slice(0, 8)" :key="t">
+              <a class="badge" data-variant="outline" :href="tagURL(t)" @click.prevent="addTag(t)" x-text="t"></a>
+            </template>
+            <span class="text-muted-foreground" x-show="(r.tags || []).length > 8" x-text="'+' + ((r.tags || []).length - 8)"></span>
           </footer>
         </li>
       </template>

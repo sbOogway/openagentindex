@@ -20,3 +20,7 @@ export function time(sec) {
 export function agentURL(host) {
   return "agent.html?host=" + encodeURIComponent(host);
 }
+
+export function searchURL(params) {
+  return "index.html?" + new URLSearchParams(params);
+}

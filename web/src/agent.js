@@ -1,7 +1,7 @@
 import Alpine from "alpinejs";
 import "./main.css";
 import { endpoint, send } from "./a2a.js";
-import { get, time } from "./api.js";
+import { get, searchURL, time } from "./api.js";
 
 Alpine.data("agent", () => ({
   agent: null,
@@ -12,6 +12,7 @@ Alpine.data("agent", () => ({
   text: "",
   sending: false,
   time,
+  searchURL,
 
   async init() {
     const host = new URLSearchParams(location.search).get("host") || "";
@@ -24,17 +25,18 @@ Alpine.data("agent", () => ({
     }
   },
 
-  get skills() {
-    const skills = this.agent?.card?.skills;
-    return Array.isArray(skills) ? skills : [];
-  },
-
   get cardURL() {
     return new URL("https://" + this.agent.host + "/.well-known/agent-card.json").href;
   },
 
-  get cardJSON() {
-    return this.agent.card ? JSON.stringify(this.agent.card, null, 2) : "No valid card.";
+  get tags() {
+    return this.agent.tags || [];
+  },
+
+  get lastCheck() {
+    const o = this.agent.observations[0];
+    if (!o) return "";
+    return `${o.ok ? "ok" : "failed"} · HTTP ${o.http_status || "-"} · ${o.latency_ms} ms · ${time(o.at)}`;
   },
 
   get chatUnavailable() {
