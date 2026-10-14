@@ -3,9 +3,11 @@ GO ?= $(or $(shell command -v go),$(lastword $(sort $(wildcard $(HOME)/.cache/pr
 
 OAI_DB_PATH    ?= data/oai.db
 OAI_SEEDS_PATH ?= seeds.txt
-export OAI_DB_PATH OAI_SEEDS_PATH OAI_CONTACT_URL OAI_LISTEN_ADDR
+WEB_PORT       ?= 8000
+OAI_CORS_ORIGIN ?= http://localhost:$(WEB_PORT)
+export OAI_DB_PATH OAI_SEEDS_PATH OAI_CONTACT_URL OAI_LISTEN_ADDR OAI_CORS_ORIGIN
 
-.PHONY: help run-crawler run-api test build lint check clean go-check
+.PHONY: help run-crawler run-api run-web test build lint check clean go-check
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -14,8 +16,11 @@ run-crawler: go-check ## Run one crawl (OAI_DB_PATH, OAI_SEEDS_PATH)
 	@mkdir -p $(dir $(OAI_DB_PATH))
 	$(GO) run ./cmd/crawler
 
-run-api: go-check ## Run the API
+run-api: go-check ## Run the API on :8080 (OAI_DB_PATH)
 	$(GO) run ./cmd/api
+
+run-web: ## Serve the website on http://localhost:8000. Needs run-api.
+	python3 -m http.server $(WEB_PORT) --bind localhost --directory web
 
 test: go-check ## Run the unit tests with the race detector
 	$(GO) test -race ./...

@@ -37,7 +37,8 @@ Build, run and test with `make` (`make help` shows all targets). If Go is not in
 
 ```sh
 make run-crawler    # one crawl of seeds.txt into data/oai.db
-make run-api
+make run-api        # API on :8080, reads data/oai.db
+make run-web        # website on http://localhost:8000 (needs run-api)
 make test
 ```
 
