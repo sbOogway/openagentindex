@@ -244,7 +244,6 @@ erDiagram
   cards {
     text card_hash PK
     text card_json
-    text protocol_version
     int first_seen
   }
   observations {
@@ -320,6 +319,7 @@ Keys:
 Rules:
 
 - `Ingest` is the only method that writes facts. It inserts the observation and its card with `INSERT OR IGNORE`. Then it rebuilds the agent view of that host.
+- `cards.card_json` holds the canonical JSON. The index does not parse cards. The agent view reads the protocol version and the other fields from `card_json`.
 - `observations.kind` is `card` or `endpoint`. `observations.card_hash` is set when a card check gets a valid card.
 - The current card of an agent is the newest valid card from an observer with a weight more than 0.
 - `observers` holds this node with weight 1. In the MVP, there are no other observers.
