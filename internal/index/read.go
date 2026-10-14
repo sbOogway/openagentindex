@@ -70,20 +70,13 @@ func OpenReadOnly(ctx context.Context, path string) (*Index, error) {
 	return &Index{db: db}, nil
 }
 
-const summaryColumns = `host, name, description, protocol_version, ok, http_status, error, at`
-
 func (i *Index) Search(ctx context.Context, q Query) (Results, error) {
 	if err := validateQuery(q); err != nil {
 		return Results{}, err
 	}
-	rows, err := i.db.QueryContext(ctx, `
-		SELECT `+summaryColumns+`, COUNT(*) OVER ()
-		FROM host_summaries
-		WHERE (?1 = 'any' OR (?1 = 'ok') = (ok = 1))
-		  AND (?2 = '' OR host LIKE ?2 ESCAPE '\' OR name LIKE ?2 ESCAPE '\' OR description LIKE ?2 ESCAPE '\')
-		ORDER BY name = '', lower(name), host
-		LIMIT ?3 OFFSET ?4`,
-		q.Status, likePattern(q.Text), q.Limit, q.Offset)
+	rows, err := i.db.QueryContext(ctx, querySearch,
+		sql.Named("status", q.Status), sql.Named("text", likePattern(q.Text)),
+		sql.Named("limit", q.Limit), sql.Named("offset", q.Offset))
 	if err != nil {
 		return Results{}, err
 	}
@@ -103,8 +96,7 @@ func (i *Index) Search(ctx context.Context, q Query) (Results, error) {
 func (i *Index) Agent(ctx context.Context, host string) (Agent, error) {
 	var a Agent
 	var card sql.NullString
-	err := i.db.QueryRowContext(ctx, `
-		SELECT `+summaryColumns+`, card_json FROM host_summaries WHERE host = ?`, host).
+	err := i.db.QueryRowContext(ctx, queryAgent, sql.Named("host", host)).
 		Scan(append(summaryFields(&a.Summary), &card)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Agent{}, fmt.Errorf("%w: %s", ErrNotFound, host)
@@ -120,9 +112,8 @@ func (i *Index) Agent(ctx context.Context, host string) (Agent, error) {
 }
 
 func (i *Index) observations(ctx context.Context, host string) ([]Observation, error) {
-	rows, err := i.db.QueryContext(ctx, `
-		SELECT id, observer, kind, at, ok, http_status, latency_ms, error
-		FROM observations WHERE host = ? ORDER BY at DESC, id DESC LIMIT ?`, host, agentObservations)
+	rows, err := i.db.QueryContext(ctx, queryObservations,
+		sql.Named("host", host), sql.Named("limit", agentObservations))
 	if err != nil {
 		return nil, err
 	}
