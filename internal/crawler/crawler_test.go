@@ -186,6 +186,17 @@ func TestRunStopsWhenIngestFails(t *testing.T) {
 	}
 }
 
+func TestRunSkipsInvalidObservation(t *testing.T) {
+	p := &fakeProber{}
+	s := &fakeStore{err: fmt.Errorf("%w: card: duplicate key", index.ErrInvalidObservation)}
+	if err := newCrawler(p, s, fakeSource{hosts: []string{"a.example", "b.example"}}).Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !slices.Equal(p.checked, []string{"a.example", "b.example"}) {
+		t.Errorf("checked = %q, want [a.example b.example]", p.checked)
+	}
+}
+
 func TestRunStopsWhenCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
