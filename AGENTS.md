@@ -44,7 +44,10 @@
 - Before you create a branch, write a test plan: the behaviours to test and how to test each one.
 - Write table-driven tests where cases differ only in their data.
 - Unit tests must not use the network. Use `net/http/httptest` for HTTP.
-- Run `gofmt`, `go vet ./...` and `go test ./...` before every commit. Go is not installed on the host; run the toolchain from the `golang` image as shown in `README.md`.
+- prek runs the checks in `.pre-commit-config.yaml`. At each commit: golangci-lint and `go mod tidy -diff`. At each push: also `go test -race` and `govulncheck`.
+- Install the hooks once in each clone: `prek install`. Do not commit or push with `--no-verify`.
+- Go is not installed on the host. prek downloads the Go toolchain and golangci-lint.
+- Do not merge a pull request with failed checks. Do not disable a linter to make a check pass; fix the code or explain the exception in the pull request.
 
 ## Workflow
 
@@ -62,7 +65,7 @@
 
 ## Commits
 
-- Write commit messages in the Conventional Commits format: `type(scope): summary`.
+- Write commit messages in the Conventional Commits format: `type(scope): summary`. Keep the title at most 72 characters. The commit-msg hook checks this.
 - Use `feat` for a new feature, `fix` for a bug fix, and `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style` or `revert` for everything else.
 - Use the package or component as the scope, e.g. `feat(crawler): ...`, `fix(api): ...`.
 - Mark breaking changes with `!` after the type or a `BREAKING CHANGE:` footer.
