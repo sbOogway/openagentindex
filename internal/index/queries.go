@@ -9,8 +9,8 @@ import (
 var queryFiles embed.FS
 
 var (
-	querySearch            = query("search")
-	queryAgent             = query("agent")
+	querySearch            = query("host_summaries") + query("search") //nolint:gosec // G202: both parts are embedded files, not input.
+	queryAgent             = query("host_summaries") + query("agent")  //nolint:gosec // G202: both parts are embedded files, not input.
 	queryObservations      = query("observations")
 	queryNodeSelect        = query("node_select")
 	queryNodeInsert        = query("node_insert")
