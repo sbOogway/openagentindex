@@ -1,0 +1,37 @@
+{
+    "protocolVersion": "0.3.0",
+    "name": "Old Agent",
+    "description": "A v0.3 agent.",
+    "url": "https://old.example.com/a2a",
+    "preferredTransport": "JSONRPC",
+    "additionalInterfaces": [
+        {
+            "url": "https://old.example.com/rest",
+            "transport": "HTTP+JSON"
+        }
+    ],
+    "version": "1.2.0",
+    "capabilities": {
+        "streaming": true
+    },
+    "defaultInputModes": [
+        "text/plain"
+    ],
+    "defaultOutputModes": [
+        "text/plain"
+    ],
+    "skills": [
+        {
+            "id": "s1",
+            "name": "Skill one",
+            "description": "Does one thing.",
+            "tags": [
+                "a",
+                "b"
+            ],
+            "examples": [
+                "do it"
+            ]
+        }
+    ]
+}

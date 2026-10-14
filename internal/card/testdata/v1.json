@@ -1,0 +1,57 @@
+{
+    "name": "Echo Agent",
+    "description": "Echoes your messages back. Useful for testing A2A clients and plumbing.",
+    "supportedInterfaces": [
+        {
+            "url": "https://echo-agent.mattiapapaccioli.com",
+            "protocolBinding": "JSONRPC",
+            "protocolVersion": "1.0"
+        },
+        {
+            "url": "https://echo-agent.mattiapapaccioli.com",
+            "protocolBinding": "HTTP+JSON",
+            "protocolVersion": "1.0"
+        }
+    ],
+    "provider": {
+        "url": "https://mattiapapaccioli.com",
+        "organization": "Mattia Papaccioli"
+    },
+    "version": "0.1.0",
+    "capabilities": {
+        "streaming": true
+    },
+    "defaultInputModes": [
+        "text/plain"
+    ],
+    "defaultOutputModes": [
+        "text/plain"
+    ],
+    "skills": [
+        {
+            "id": "echo",
+            "name": "Echo",
+            "description": "Replies with the text you send, as a single message.",
+            "tags": [
+                "test",
+                "echo"
+            ],
+            "examples": [
+                "hello world"
+            ]
+        },
+        {
+            "id": "stream_echo",
+            "name": "Streaming echo",
+            "description": "Prefix your message with \"stream:\" to get a task that streams the text back word by word as an artifact.",
+            "tags": [
+                "test",
+                "streaming",
+                "task"
+            ],
+            "examples": [
+                "stream: the quick brown fox"
+            ]
+        }
+    ]
+}
