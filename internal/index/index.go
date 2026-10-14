@@ -4,14 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gowebpki/jcs"
+	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 )
 
@@ -22,8 +24,8 @@ const (
 
 var ErrInvalidObservation = errors.New("invalid observation")
 
-//go:embed schema.sql
-var schema string
+//go:embed migrations/*.sql
+var migrations embed.FS
 
 type Index struct {
 	db     *sql.DB
@@ -52,8 +54,8 @@ func Open(ctx context.Context, path string) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.ExecContext(ctx, schema); err != nil {
-		return nil, errors.Join(fmt.Errorf("create schema: %w", err), db.Close())
+	if err := migrate(ctx, db); err != nil {
+		return nil, errors.Join(fmt.Errorf("migrate: %w", err), db.Close())
 	}
 	nodeID, err := ensureNode(ctx, db)
 	if err != nil {
@@ -93,6 +95,19 @@ func (i *Index) Ingest(ctx context.Context, o Observation) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func migrate(ctx context.Context, db *sql.DB) error {
+	fsys, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		return err
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, fsys)
+	if err != nil {
+		return err
+	}
+	_, err = provider.Up(ctx)
+	return err
 }
 
 func ensureNode(ctx context.Context, db *sql.DB) (string, error) {

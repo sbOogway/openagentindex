@@ -1,20 +1,21 @@
-CREATE TABLE IF NOT EXISTS node (
+-- +goose Up
+CREATE TABLE node (
     id         TEXT PRIMARY KEY,
     created_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS observers (
+CREATE TABLE observers (
     observer TEXT PRIMARY KEY,
     weight   REAL NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS cards (
+CREATE TABLE cards (
     card_hash  TEXT PRIMARY KEY,
     card_json  TEXT NOT NULL,
     first_seen INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS observations (
+CREATE TABLE observations (
     id          TEXT PRIMARY KEY,
     observer    TEXT NOT NULL REFERENCES observers (observer),
     host        TEXT NOT NULL,

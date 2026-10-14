@@ -113,6 +113,35 @@ func TestNodeIDIsStable(t *testing.T) {
 	}
 }
 
+func TestReopenAppliesNoMigration(t *testing.T) {
+	i, path := openTemp(t)
+	if v := schemaVersion(t, i); v != 1 {
+		t.Fatalf("schema version = %d, want 1", v)
+	}
+	applied := count(t, i, "goose_db_version")
+	if err := i.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if n := count(t, reopened, "goose_db_version"); n != applied {
+		t.Errorf("goose_db_version rows after reopen = %d, want %d", n, applied)
+	}
+}
+
+func schemaVersion(t *testing.T, i *Index) int64 {
+	t.Helper()
+	var v int64
+	if err := i.db.QueryRowContext(t.Context(), `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
 func TestIngestIsIdempotent(t *testing.T) {
 	i, _ := openTemp(t)
 	o := newObservation(t, KindCard, []byte(`{"name":"A"}`))
