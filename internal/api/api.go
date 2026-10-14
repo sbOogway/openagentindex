@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -11,11 +12,15 @@ import (
 	"github.com/sbOogway/openagentindex/internal/index"
 )
 
-const defaultLimit = 20
+const (
+	defaultLimit    = 20
+	defaultTagLimit = 50
+)
 
 type Index interface {
 	Search(ctx context.Context, q index.Query) (index.Results, error)
 	Agent(ctx context.Context, host string) (index.Agent, error)
+	Tags(ctx context.Context, prefix string, limit int) ([]index.TagCount, error)
 }
 
 type Config struct {
@@ -34,6 +39,7 @@ func Handler(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/search", s.search)
 	mux.HandleFunc("GET /v1/agents/{host}", s.agent)
+	mux.HandleFunc("GET /v1/tags", s.tags)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -44,14 +50,21 @@ func Handler(cfg Config) http.Handler {
 }
 
 type summary struct {
-	Host            string `json:"host"`
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	ProtocolVersion string `json:"protocol_version"`
-	Status          string `json:"status"`
-	HTTPStatus      int    `json:"http_status"`
-	Error           string `json:"error,omitempty"`
-	LastChecked     int64  `json:"last_checked"`
+	Host            string   `json:"host"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	ProtocolVersion string   `json:"protocol_version"`
+	Status          string   `json:"status"`
+	HTTPStatus      int      `json:"http_status"`
+	Error           string   `json:"error,omitempty"`
+	LastChecked     int64    `json:"last_checked"`
+	Tags            []string `json:"tags"`
+	Bindings        []string `json:"bindings"`
+}
+
+type tagCount struct {
+	Tag   string `json:"tag"`
+	Hosts int    `json:"hosts"`
 }
 
 type observation struct {
@@ -112,24 +125,54 @@ func (s *server) agent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (s *server) tags(w http.ResponseWriter, r *http.Request) {
+	limit, err := intParam(r, "limit", defaultTagLimit)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	tags, err := s.Index.Tags(r.Context(), r.URL.Query().Get("q"), limit)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	out := struct {
+		Tags []tagCount `json:"tags"`
+	}{Tags: []tagCount{}}
+	for _, t := range tags {
+		out.Tags = append(out.Tags, tagCount{Tag: t.Tag, Hosts: t.Hosts})
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSON(w, http.StatusOK, out)
+}
+
 func parseQuery(r *http.Request) (index.Query, error) {
 	v := r.URL.Query()
-	q := index.Query{Text: v.Get("q"), Status: v.Get("status"), Limit: defaultLimit}
+	q := index.Query{
+		Text: v.Get("q"), Status: v.Get("status"), Tags: v["tag"],
+		Binding: v.Get("binding"), Version: v.Get("version"),
+	}
 	if q.Status == "" {
 		q.Status = index.StatusOK
 	}
 	var err error
-	if s := v.Get("limit"); s != "" {
-		if q.Limit, err = strconv.Atoi(s); err != nil {
-			return q, errors.New("limit is not a number")
-		}
+	if q.Limit, err = intParam(r, "limit", defaultLimit); err != nil {
+		return q, err
 	}
-	if s := v.Get("offset"); s != "" {
-		if q.Offset, err = strconv.Atoi(s); err != nil {
-			return q, errors.New("offset is not a number")
-		}
+	q.Offset, err = intParam(r, "offset", 0)
+	return q, err
+}
+
+func intParam(r *http.Request, name string, fallback int) (int, error) {
+	s := r.URL.Query().Get(name)
+	if s == "" {
+		return fallback, nil
 	}
-	return q, nil
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("%s is not a number", name)
+	}
+	return n, nil
 }
 
 func toSummary(a index.Summary) summary {
@@ -140,7 +183,16 @@ func toSummary(a index.Summary) summary {
 	return summary{
 		Host: a.Host, Name: a.Name, Description: a.Description, ProtocolVersion: a.ProtocolVersion,
 		Status: status, HTTPStatus: a.HTTPStatus, Error: a.Error, LastChecked: a.LastChecked.Unix(),
+		Tags: orEmpty(a.Tags), Bindings: orEmpty(a.Bindings),
 	}
+}
+
+// orEmpty makes a nil slice encode as [] instead of null.
+func orEmpty(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func (s *server) fail(w http.ResponseWriter, err error) {
