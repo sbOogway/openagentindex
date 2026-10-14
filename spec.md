@@ -372,7 +372,7 @@ The crawler uses a lead source only for hosts. It does not copy other data from 
 
 - Use HTTPS only.
 - Send `User-Agent: OpenAgentIndexBot/<version> (+<contact URL>)`.
-- Obey `robots.txt` for this user agent.
+- Obey `robots.txt` for this user agent (RFC 9309). If `robots.txt` gives 4xx, all URLs are allowed. If it gives 5xx or no response, send no request to the host. Keep the rules of a host for 24 h.
 - Do one request at a time to each host. Wait at least 1 s between requests to the same host.
 - Use a global limit of 64 requests at the same time.
 - Stop each request after 10 s.
