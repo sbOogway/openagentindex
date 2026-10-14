@@ -118,7 +118,7 @@ func ensureNode(ctx context.Context, db *sql.DB) (string, error) {
 	defer func() { _ = tx.Rollback() }()
 
 	var id string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM node`).Scan(&id)
+	err = tx.QueryRowContext(ctx, queryNodeSelect).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
@@ -130,10 +130,10 @@ func ensureNode(ctx context.Context, db *sql.DB) (string, error) {
 		return "", err
 	}
 	id = v7.String()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO node (id, created_at) VALUES (?, ?)`, id, time.Now().Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, queryNodeInsert, sql.Named("id", id), sql.Named("created_at", time.Now().Unix())); err != nil {
 		return "", err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO observers (observer, weight) VALUES (?, 1)`, id); err != nil {
+	if _, err := tx.ExecContext(ctx, queryObserverInsert, sql.Named("observer", id), sql.Named("weight", 1)); err != nil {
 		return "", err
 	}
 	return id, tx.Commit()
@@ -161,18 +161,16 @@ func insertCard(ctx context.Context, tx *sql.Tx, o Observation) (sql.NullString,
 	}
 	sum := sha256.Sum256(canonical)
 	hash := hex.EncodeToString(sum[:])
-	_, err = tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO cards (card_hash, card_json, first_seen) VALUES (?, ?, ?)`,
-		hash, string(canonical), o.At.Unix())
+	_, err = tx.ExecContext(ctx, queryCardInsert,
+		sql.Named("card_hash", hash), sql.Named("card_json", string(canonical)), sql.Named("first_seen", o.At.Unix()))
 	return sql.NullString{String: hash, Valid: true}, err
 }
 
 func insertObservation(ctx context.Context, tx *sql.Tx, o Observation, cardHash sql.NullString) error {
-	_, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO observations
-		 (id, observer, host, kind, at, ok, card_hash, http_status, latency_ms, error)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		o.ID, o.Observer, o.Host, o.Kind, o.At.Unix(), o.OK, cardHash,
-		o.HTTPStatus, o.Latency.Milliseconds(), o.Error)
+	_, err := tx.ExecContext(ctx, queryObservationInsert,
+		sql.Named("id", o.ID), sql.Named("observer", o.Observer), sql.Named("host", o.Host),
+		sql.Named("kind", o.Kind), sql.Named("at", o.At.Unix()), sql.Named("ok", o.OK),
+		sql.Named("card_hash", cardHash), sql.Named("http_status", o.HTTPStatus),
+		sql.Named("latency_ms", o.Latency.Milliseconds()), sql.Named("error", o.Error))
 	return err
 }
