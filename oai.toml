@@ -1,0 +1,12 @@
+# Configuration for local development. Environment variables override each key
+# (spec section 11). Set OAI_CONFIG to use another file.
+
+[crawler]
+db_path = "data/oai.db"
+seeds_path = "seeds.txt"
+contact_url = "https://github.com/sbOogway/openagentindex"
+
+[api]
+db_path = "data/oai.db"
+listen_addr = "localhost:8080"
+cors_origin = "http://localhost:8000"

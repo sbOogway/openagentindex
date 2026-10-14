@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,10 +10,9 @@ import (
 	"time"
 
 	"github.com/sbOogway/openagentindex/internal/api"
+	"github.com/sbOogway/openagentindex/internal/config"
 	"github.com/sbOogway/openagentindex/internal/index"
 )
-
-const defaultListenAddr = ":8080"
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -28,23 +26,19 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	dbPath := os.Getenv("OAI_DB_PATH")
-	if dbPath == "" {
-		return errors.New("set OAI_DB_PATH")
+	cfg, err := config.LoadAPI()
+	if err != nil {
+		return err
 	}
-	addr := os.Getenv("OAI_LISTEN_ADDR")
-	if addr == "" {
-		addr = defaultListenAddr
-	}
-	idx, err := index.OpenReadOnly(ctx, dbPath)
+	idx, err := index.OpenReadOnly(ctx, cfg.DBPath)
 	if err != nil {
 		return err
 	}
 	defer idx.Close()
 
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           api.Handler(api.Config{Index: idx, CORSOrigin: os.Getenv("OAI_CORS_ORIGIN"), Log: log}),
+		Addr:              cfg.ListenAddr,
+		Handler:           api.Handler(api.Config{Index: idx, CORSOrigin: cfg.CORSOrigin, Log: log}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
