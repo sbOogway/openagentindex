@@ -71,11 +71,12 @@ flowchart TB
   subgraph vps["VPS"]
     direction TB
   tunnel["<b>Tunnel</b><br/>[Container: cloudflared]<br/><br/>Connects the API to Cloudflare. Opens no inbound ports."]
-  api["<b>API</b><br/>[Container: Go]<br/><br/>Serves search and agent records as JSON."]
+  api["<b>API</b><br/>[Container: Go]<br/><br/>Serves search and agent records as JSON. Reads a local copy of the latest snapshot."]
+  crawler["<b>Crawler</b><br/>[Container: Go]<br/><br/>Collects leads, gets agent cards, checks agents. Publishes snapshots."]
   db[("<b>Index</b><br/>[Container: SQLite in WAL mode, on a volume]<br/><br/>Leads, agents, checks, full-text index.")]
-  crawler["<b>Crawler</b><br/>[Container: Go]<br/><br/>Collects leads, gets agent cards, checks agents."]
   end
 
+  r2[("<b>Snapshot store</b><br/>[Container: Cloudflare R2, private bucket]<br/><br/>Read-only snapshots of the index.")]
   sources["<b>Lead sources</b><br/>[External System]<br/><br/>External lists of hosts."]
   agents["<b>A2A agents</b><br/>[External System]<br/><br/>Public A2A servers."]
 
@@ -83,8 +84,9 @@ flowchart TB
   searcher -- "Calls the API<br/>[HTTPS, JSON]" --> tunnel
   web -- "Calls the API<br/>[HTTPS, JSON]" --> tunnel
   tunnel -- "Forwards requests<br/>[HTTP]" --> api
-  api -- "Reads" --> db
   crawler -- "Reads and writes" --> db
+  crawler -- "Uploads snapshots<br/>[S3 API]" --> r2
+  api -- "Downloads the latest snapshot<br/>[S3 API]" --> r2
   crawler -- "Reads leads<br/>[HTTPS]" --> sources
   crawler -- "Card checks, endpoint checks<br/>[HTTPS]" --> agents
 
@@ -94,7 +96,7 @@ flowchart TB
   classDef container fill:#438dd5,stroke:#2e6295,color:#fff
   classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
   class searcher person
-  class web,tunnel,api,crawler,db container
+  class web,tunnel,api,crawler,db,r2 container
   class sources,agents external
   style vps fill:none,stroke:#444,stroke-dasharray:5 5
 ```
@@ -103,9 +105,17 @@ flowchart TB
 |---|---|---|
 | Website | Cloudflare Pages | Source in `web/`. No build step. |
 | Tunnel | Container on the VPS | Official `cloudflare/cloudflared` image. |
-| API | Container on the VPS | Opens the database read-only. |
-| Crawler | Container on the VPS | The only writer to the database. Runs all the time. |
-| Index | File on a volume | Shared by the crawler and the API. |
+| API | Container on the VPS | Does not use the crawler volume. It can run on a different host. |
+| Crawler | Container on the VPS | The only writer to the index. Runs all the time. |
+| Index | File on the crawler volume | Used only by the crawler. |
+| Snapshot store | Cloudflare R2 | Private bucket. Also keeps the backups. |
+
+### 4.1 Snapshots
+
+- Every 10 min, the crawler writes a copy of the index with `VACUUM INTO`. It uploads the copy to R2 as `snapshots/<UTC time>.db`. Then it writes the object `latest` with the name of that copy.
+- Every 1 min, the API reads `latest`. If the name changed, the API downloads the copy, opens it read-only and replaces the old copy.
+- Search results can be up to approximately 11 min older than the index.
+- A lifecycle rule on the bucket deletes snapshots that are older than 7 days. The other snapshots are the backups.
 
 ## 5. Components (C4 level 3)
 
@@ -121,29 +131,34 @@ flowchart TB
   card["<b>Card parser</b><br/>[Component: internal/card]<br/><br/>Parses and validates v1.0 and v0.3 cards."]
   fetch["<b>Fetcher</b><br/>[Component: internal/fetch]<br/><br/>Polite HTTP client with limits and SSRF protection."]
   index["<b>Index</b><br/>[Component: internal/index]<br/><br/>Stores leads, agents and checks. Runs search."]
+  publisher["<b>Snapshot publisher</b><br/>[Component: internal/snapshot]<br/><br/>Writes a copy of the index. Uploads it to R2."]
   end
 
   db[("<b>Index</b><br/>[Container: SQLite]")]
+  r2[("<b>Snapshot store</b><br/>[Container: Cloudflare R2]")]
   sources["<b>Lead sources</b><br/>[External System]<br/><br/>External lists of hosts."]
   agents["<b>A2A agents</b><br/>[External System]<br/><br/>Public A2A servers."]
 
   scheduler -- "Requests new leads" --> leads
   scheduler -- "Requests checks" --> probe
   scheduler -- "Reads due work, writes results" --> index
+  scheduler -- "Requests a snapshot every 10 min" --> publisher
   probe -- "Parses cards with" --> card
   leads -- "Uses" --> fetch
   probe -- "Uses" --> fetch
   fetch -- "Reads<br/>[HTTPS]" --> sources
   fetch -- "Gets cards, checks endpoints<br/>[HTTPS]" --> agents
   index -- "Reads and writes<br/>[SQL]" --> db
+  publisher -- "Copies the index with" --> index
+  publisher -- "Uploads<br/>[S3 API]" --> r2
 
   classDef person fill:#08427b,stroke:#052e56,color:#fff
   classDef system fill:#1168bd,stroke:#0b4884,color:#fff
   classDef external fill:#999999,stroke:#6b6b6b,color:#fff
   classDef container fill:#438dd5,stroke:#2e6295,color:#fff
   classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
-  class scheduler,leads,probe,card,fetch,index component
-  class db container
+  class scheduler,leads,probe,card,fetch,index,publisher component
+  class db,r2 container
   class sources,agents external
   style crawler fill:none,stroke:#444,stroke-dasharray:5 5
 ```
@@ -158,21 +173,26 @@ flowchart TB
     direction TB
   handlers["<b>HTTP handlers</b><br/>[Component: internal/api]<br/><br/>Parses requests. Writes JSON responses. Sets CORS and cache headers."]
   index["<b>Index</b><br/>[Component: internal/index]<br/><br/>Runs search and reads agent records."]
+  loader["<b>Snapshot loader</b><br/>[Component: internal/snapshot]<br/><br/>Downloads the latest snapshot. Replaces the local copy."]
   end
 
-  db[("<b>Index</b><br/>[Container: SQLite]")]
+  copy[("<b>Local snapshot</b><br/>[Container: SQLite, read-only]")]
+  r2[("<b>Snapshot store</b><br/>[Container: Cloudflare R2]")]
 
   web -- "Calls<br/>[HTTPS, JSON]" --> handlers
   handlers -- "Uses" --> index
-  index -- "Reads<br/>[SQL]" --> db
+  index -- "Reads<br/>[SQL]" --> copy
+  loader -- "Downloads<br/>[S3 API]" --> r2
+  loader -- "Writes" --> copy
+  loader -- "Tells it to reopen the copy" --> index
 
   classDef person fill:#08427b,stroke:#052e56,color:#fff
   classDef system fill:#1168bd,stroke:#0b4884,color:#fff
   classDef external fill:#999999,stroke:#6b6b6b,color:#fff
   classDef container fill:#438dd5,stroke:#2e6295,color:#fff
   classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
-  class handlers,index component
-  class web,db container
+  class handlers,index,loader component
+  class web,copy,r2 container
   style apiBoundary fill:none,stroke:#444,stroke-dasharray:5 5
 ```
 
@@ -187,10 +207,11 @@ flowchart TB
 | `internal/index` | Own the schema, the writes, the reads and the search. | `Search(ctx, query)`, `Agent(ctx, host)`, write methods |
 | `internal/crawler` | Schedule the work. Connect the packages above. | `Run(ctx)` |
 | `internal/api` | Serve HTTP. | `Handler(index) http.Handler` |
+| `internal/snapshot` | Publish snapshots to R2. Load the latest snapshot from R2. | `Publisher.Publish(ctx)`, `Loader.Run(ctx)` |
 
 Each package defines the interfaces that it uses. The `cmd/` binaries only read configuration and connect packages.
 
-The card parser uses `github.com/a2aproject/a2a-go/v2` for v1.0 cards and its `a2acompat/a2av0` package for v0.3 cards. The index uses `modernc.org/sqlite`. This is pure Go, so the images need no C toolchain.
+The card parser uses `github.com/a2aproject/a2a-go/v2` for v1.0 cards and its `a2acompat/a2av0` package for v0.3 cards. The index uses `modernc.org/sqlite`. This is pure Go, so the images need no C toolchain. The snapshot package uses an S3-compatible client for R2.
 
 ## 6. Data model
 
@@ -405,21 +426,25 @@ Search result item:
 ## 11. Deployment
 
 - One VPS with 2 vCPU and 4 GB RAM is sufficient.
-- A compose file starts `crawler`, `api` and `tunnel`. The crawler and the API share the volume `oai-data`.
+- A compose file starts `crawler`, `api` and `tunnel`. The crawler uses the volume `oai-data`. The API uses the volume `oai-cache` for its local snapshot.
 - One `Containerfile` builds both binaries. It uses `golang:1.27` to build and `gcr.io/distroless/static` (non-root) to run.
 - The crawler and the API log JSON to stdout with `log/slog`.
-- A daily job writes a snapshot with `VACUUM INTO` and copies it off the VPS.
+- The snapshots in R2 are the backups. See section 4.1.
 
 Configuration (environment variables):
 
 | Variable | Used by | Purpose |
 |---|---|---|
-| `OAI_DB_PATH` | crawler, api | Path of the SQLite file |
+| `OAI_DB_PATH` | crawler | Path of the SQLite file |
 | `OAI_CONTACT_URL` | crawler | URL in the user agent |
 | `OAI_GITHUB_TOKEN` | crawler | Token for GitHub code search |
 | `OAI_SEEDS_PATH` | crawler | Path of `seeds.txt` |
 | `OAI_LISTEN_ADDR` | api | Listen address, for example `:8080` |
 | `OAI_CORS_ORIGIN` | api | Website origin |
+| `OAI_SNAPSHOT_DIR` | api | Directory for the local snapshot |
+| `OAI_R2_ENDPOINT` | crawler, api | R2 S3 endpoint |
+| `OAI_R2_BUCKET` | crawler, api | Bucket name |
+| `OAI_R2_ACCESS_KEY_ID`, `OAI_R2_SECRET_ACCESS_KEY` | crawler, api | R2 credentials. The API needs read access only. |
 
 ## 12. Tests
 
@@ -427,6 +452,7 @@ Configuration (environment variables):
 - `internal/card` uses fixture cards in `testdata/`: valid v1.0, valid v0.3, and invalid cards.
 - `internal/fetch` tests the limits, `robots.txt` and the SSRF block.
 - `internal/index` uses a temporary SQLite file.
+- `internal/snapshot` uses an in-memory object store behind its storage interface. The tests do not use R2.
 - A manual end-to-end test runs the crawler with `echo-agent.mattiapapaccioli.com` in `seeds.txt`. The agent must become `live`.
 
 ## 13. Milestones
@@ -436,14 +462,13 @@ Configuration (environment variables):
 | M1 | `card`, `fetch`, `index`. The crawler reads the seed file and a2aregistry.org. A report shows the found agents. |
 | M2 | Card checks, endpoint checks, status and backoff. |
 | M3 | Certificate transparency and GitHub lead sources. Coverage report against a2aregistry.org. |
-| M4 | REST API with search and ranking. |
-| M5 | `Containerfile`, compose file, VPS deployment, backups. |
+| M4 | REST API with search and ranking. In development, it reads a local SQLite file. |
+| M5 | Snapshots to R2, `Containerfile`, compose file, VPS deployment. |
 | M6 | Website on Cloudflare Pages. |
 
 ## 14. Open questions
 
 - Domain name for the website and the API.
 - VPS provider.
-- Off-site storage for the backups.
 - Use of the Agenstry bulk feed as a lead source. Read its terms first.
 - Contact address for removal requests.
