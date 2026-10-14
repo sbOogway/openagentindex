@@ -124,6 +124,7 @@ flowchart TB
 
 - Every 10 min, the crawler writes a copy of the index with `VACUUM INTO`. It uploads the copy to R2 as `snapshots/<UTC time>.db`. Then it writes the object `latest` with the name of that copy.
 - Every 1 min, the API reads `latest`. If the name changed, the API downloads the copy, opens it read-only and replaces the old copy.
+- The API does not use a snapshot with a schema version that it does not know. It keeps the old copy and logs an error.
 - Search results can be up to approximately 11 min older than the index.
 - A lifecycle rule on the bucket deletes snapshots that are older than 7 days. The other snapshots are the backups.
 
@@ -329,6 +330,14 @@ Rules:
 - The view does not include hosts in `denylist`.
 - Times are Unix seconds.
 - The index deletes observations that are older than 30 days. Then it deletes cards that no row refers to.
+
+Schema changes:
+
+- All schema changes are goose migrations in `internal/index/migrations`. `Open` applies the pending migrations.
+- Migrations go forward only. Do not write down migrations. Do not change a migration after it is merged.
+- A migration that changes a fact or local-state table must keep the data.
+- A migration can drop and create a derived table. The index then rebuilds the table from the facts.
+- The schema version is the highest applied version in `goose_db_version`.
 
 ## 7. Crawler
 
