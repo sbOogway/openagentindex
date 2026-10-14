@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gowebpki/jcs v1.0.2
 	github.com/pressly/goose/v3 v3.29.0
+	github.com/temoto/robotstxt v1.1.2
 	modernc.org/sqlite v1.60.1
 )
 
