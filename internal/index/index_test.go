@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"path/filepath"
 	"testing"
 	"time"
@@ -115,8 +116,12 @@ func TestNodeIDIsStable(t *testing.T) {
 
 func TestReopenAppliesNoMigration(t *testing.T) {
 	i, path := openTemp(t)
-	if v := schemaVersion(t, i); v != 1 {
-		t.Fatalf("schema version = %d, want 1", v)
+	files, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := schemaVersion(t, i); v != int64(len(files)) {
+		t.Fatalf("schema version = %d, want %d", v, len(files))
 	}
 	applied := count(t, i, "goose_db_version")
 	if err := i.Close(); err != nil {
