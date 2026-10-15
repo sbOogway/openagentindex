@@ -48,14 +48,40 @@ type robotsRules struct {
 
 func New(userAgent string) *Client {
 	c := &Client{userAgent: userAgent, allow: isPublic, now: time.Now, robots: map[string]robotsRules{}}
-	dialer := &net.Dialer{Timeout: timeout, Control: c.control}
-	c.http = &http.Client{
+	c.http = newHTTPClient(timeout, c.control)
+	return c
+}
+
+// HTTPClient returns an HTTP client for requests that agent cards control, for
+// example the chat. Like Client, it connects only to public addresses and
+// follows at most 5 redirects. It sends only HTTPS requests.
+func HTTPClient(timeout time.Duration) *http.Client {
+	hc := newHTTPClient(timeout, func(_, address string, _ syscall.RawConn) error {
+		return checkAddress(isPublic, address)
+	})
+	hc.Transport = httpsOnly{next: hc.Transport}
+	return hc
+}
+
+func newHTTPClient(timeout time.Duration, control func(network, address string, c syscall.RawConn) error) *http.Client {
+	dialer := &net.Dialer{Timeout: timeout, Control: control}
+	return &http.Client{
 		Timeout: timeout,
 		// No proxy: a proxy would hide the target address from the SSRF check.
 		Transport:     &http.Transport{DialContext: dialer.DialContext, ForceAttemptHTTP2: true},
 		CheckRedirect: checkRedirect,
 	}
-	return c
+}
+
+type httpsOnly struct {
+	next http.RoundTripper
+}
+
+func (t httpsOnly) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := requireHTTPS(req.URL); err != nil {
+		return nil, err
+	}
+	return t.next.RoundTrip(req)
 }
 
 // Get returns the status code and the body of the response.
@@ -123,6 +149,10 @@ func (c *Client) get(ctx context.Context, u *url.URL) (int, []byte, error) {
 }
 
 func (c *Client) control(_, address string, _ syscall.RawConn) error {
+	return checkAddress(c.allow, address)
+}
+
+func checkAddress(allow func(netip.Addr) bool, address string) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return err
@@ -131,7 +161,7 @@ func (c *Client) control(_, address string, _ syscall.RawConn) error {
 	if err != nil {
 		return err
 	}
-	if !c.allow(ip) {
+	if !allow(ip) {
 		return fmt.Errorf("%w: %s", ErrBlockedAddress, ip)
 	}
 	return nil

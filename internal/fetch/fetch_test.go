@@ -149,3 +149,30 @@ func TestIsPublic(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTPClient(t *testing.T) {
+	srv := newServer(t)
+	tests := []struct {
+		name string
+		url  string
+		want error
+	}{
+		{name: "loopback address", url: srv.URL + "/ok", want: ErrBlockedAddress},
+		{name: "plain HTTP", url: strings.Replace(srv.URL, "https://", "http://", 1) + "/ok", want: ErrNotHTTPS},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, tt.url, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := HTTPClient(time.Second).Do(req)
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+			if !errors.Is(err, tt.want) {
+				t.Errorf("err = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
