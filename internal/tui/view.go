@@ -59,8 +59,9 @@ func (l layout) chatWidth() int {
 	return l.rightW - 4 // borders and padding
 }
 
+// chatRows is the number of lines for the chat log and the input.
 func (l layout) chatRows() int {
-	return max(1, l.chatH-4) // borders, title and input
+	return max(2, l.chatH-3) // borders and title
 }
 
 func (m model) screen() string {
@@ -193,44 +194,7 @@ func (m model) chatPanel(l layout) string {
 		}
 		return panel(title, []string{faint.Render(note)}, w, h, false)
 	}
-	c := m.convs[m.agent.Host]
-	body := append(chatLog(c, l.chatWidth(), l.chatRows()), inputView(m.input, w))
-	return panel(title, body, w, h, m.focus == focusChat)
-}
-
-// chatLog returns rows lines of the conversation, from the newest line minus the scroll.
-func chatLog(c *conversation, width, rows int) []string {
-	lines := chatLines(c, width)
-	scroll := 0
-	if c != nil {
-		scroll = min(c.scroll, max(0, len(lines)-rows))
-	}
-	end := len(lines) - scroll
-	start := max(0, end-rows)
-	out := lines[start:end]
-	for len(out) < rows {
-		out = append([]string{""}, out...)
-	}
-	return out
-}
-
-// chatLines returns all lines of the conversation for the width.
-func chatLines(c *conversation, width int) []string {
-	var lines []string
-	if c != nil {
-		for _, msg := range c.messages {
-			lines = append(lines, messageLines(msg, width)...)
-		}
-		if c.sending {
-			lines = append(lines, faint.Render("agent › …"))
-		}
-	}
-	if len(lines) == 0 {
-		for _, l := range wrap("Messages go from this computer directly to the agent. Some agents charge or need a key.", width, 0) {
-			lines = append(lines, faint.Render(l))
-		}
-	}
-	return lines
+	return panel(title, m.cv.view(), w, h, m.focus == focusChat)
 }
 
 // inputView renders a text input that fills a panel of width w. A text input
@@ -238,28 +202,6 @@ func chatLines(c *conversation, width int) []string {
 func inputView(in textinput.Model, w int) string {
 	in.SetWidth(max(1, w-8))
 	return in.View()
-}
-
-func messageLines(msg message, width int) []string {
-	label := map[string]string{
-		"you":   accent.Render("you ›"),
-		"agent": green.Render("agent ›"),
-		"error": red.Render("error ›"),
-	}[msg.from]
-	var out []string
-	for i, l := range cleanLines(msg.text) {
-		prefix := "  "
-		if i == 0 {
-			prefix = label + " "
-		}
-		for j, w := range wrap(l, max(10, width-lipgloss.Width(prefix)), 0) {
-			if j > 0 {
-				prefix = "  "
-			}
-			out = append(out, prefix+w)
-		}
-	}
-	return out
 }
 
 // wrap breaks text into lines of at most width cells. limit > 0 keeps only that many lines.
@@ -274,7 +216,7 @@ func wrap(text string, width, limit int) []string {
 
 func (m model) help() string {
 	if m.focus == focusChat {
-		return faint.Render(" enter send · wheel or pgup/pgdown scroll · esc back · ctrl+c quit")
+		return faint.Render(" enter send · alt+enter new line · wheel or pgup/pgdown scroll · esc back · ctrl+c quit")
 	}
 	return faint.Render(" type to search · ↑↓ select · enter chat · tab status · esc quit")
 }

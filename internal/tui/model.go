@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -12,11 +13,8 @@ import (
 
 var statuses = []string{index.StatusOK, index.StatusFailed, index.StatusAny}
 
-// Lines that one page key and one wheel step scroll the chat.
-const (
-	pageLines  = 5
-	wheelLines = 3
-)
+// wheelLines is the number of lines that one mouse wheel step scrolls the chat.
+const wheelLines = 3
 
 type Index interface {
 	Search(ctx context.Context, q index.Query) (index.Results, error)
@@ -44,7 +42,6 @@ type conversation struct {
 	messages  []message
 	contextID string
 	sending   bool
-	scroll    int // lines above the newest line
 }
 
 type resultsMsg struct {
@@ -82,7 +79,7 @@ type model struct {
 	agentErr error
 
 	focus focus
-	input textinput.Model
+	cv    chatView
 	convs map[string]*conversation
 	note  string
 
@@ -94,21 +91,34 @@ func newModel(ctx context.Context, cfg Config) model {
 	query.Prompt = "> "
 	query.Placeholder = "name, host or description"
 	query.Focus()
-	input := textinput.New()
-	input.Prompt = "> "
-	input.Placeholder = "message"
 	return model{
 		ctx: ctx, index: cfg.Index, chat: cfg.Chat,
-		query: query, input: input, convs: map[string]*conversation{},
+		query: query, cv: newChatView(), convs: map[string]*conversation{},
 		width: 100, height: 30,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return m.searchCmd()
+	return tea.Batch(m.searchCmd(), tea.RequestBackgroundColor)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	n := next.(model)
+	n.syncChat()
+	return n, cmd
+}
+
+// syncChat sizes the chat panel and shows the conversation of the selected agent.
+func (m *model) syncChat() {
+	l := m.layout()
+	m.cv.setSize(l.chatWidth(), l.chatRows())
+	if m.agent != nil && m.agent.Card != nil {
+		m.cv.show(m.agent.Host, m.conv(m.agent.Host))
+	}
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -124,7 +134,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gotReply(msg)
 		return m, nil
 	case tea.MouseWheelMsg:
-		m.wheel(msg)
+		if m.agent != nil && m.agent.Card != nil && m.layout().inChat(msg.X, msg.Y) {
+			return m, m.cv.scroll(msg)
+		}
+		return m, nil
+	case tea.BackgroundColorMsg:
+		m.cv.dark = msg.IsDark()
 		return m, nil
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
@@ -136,17 +151,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.searchKey(msg)
 	case tea.PasteMsg:
 		if m.focus == focusChat {
-			var cmd tea.Cmd
-			m.input, cmd = m.input.Update(msg)
-			return m, cmd
+			return m, m.cv.typed(msg)
 		}
 		return m.updateQuery(msg)
 	}
 	// Other messages, for example the cursor blink, belong to the inputs.
-	var queryCmd, inputCmd tea.Cmd
+	var queryCmd tea.Cmd
 	m.query, queryCmd = m.query.Update(msg)
-	m.input, inputCmd = m.input.Update(msg)
-	return m, tea.Batch(queryCmd, inputCmd)
+	return m, tea.Batch(queryCmd, m.cv.typed(msg))
 }
 
 func (m model) gotResults(msg resultsMsg) (tea.Model, tea.Cmd) {
@@ -159,7 +171,7 @@ func (m model) gotResults(msg resultsMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) gotReply(msg replyMsg) {
 	c := m.conv(msg.host)
-	c.sending, c.scroll = false, 0
+	c.sending = false
 	if msg.err != nil {
 		c.messages = append(c.messages, message{from: "error", text: msg.err.Error()})
 		return
@@ -209,16 +221,10 @@ func (m model) chatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		return m.send()
-	case "pgup":
-		m.scrollChat(pageLines)
-		return m, nil
-	case "pgdown":
-		m.scrollChat(-pageLines)
-		return m, nil
+	case "pgup", "pgdown":
+		return m, m.cv.scroll(msg)
 	}
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
+	return m, m.cv.typed(msg)
 }
 
 func (m model) moveCursor(delta int) (tea.Model, tea.Cmd) {
@@ -269,51 +275,29 @@ func (m model) openChat() (tea.Model, tea.Cmd) {
 	}
 	m.focus = focusChat
 	m.query.Blur()
-	return m, m.input.Focus()
+	return m, m.cv.input.Focus()
 }
 
 func (m model) closeChat() (tea.Model, tea.Cmd) {
 	m.focus = focusSearch
-	m.input.Blur()
+	m.cv.input.Blur()
 	return m, m.query.Focus()
 }
 
 func (m model) send() (tea.Model, tea.Cmd) {
-	text := m.input.Value()
 	c := m.conv(m.agent.Host)
-	if text == "" || c.sending {
+	if c.sending || strings.TrimSpace(m.cv.input.Value()) == "" {
 		return m, nil
 	}
-	m.input.SetValue("")
+	text := m.cv.take()
 	c.messages = append(c.messages, message{from: "you", text: text})
-	c.sending, c.scroll = true, 0
+	c.sending = true
+	m.cv.log.GotoBottom()
 	ctx, ch, host, card, contextID := m.ctx, m.chat, m.agent.Host, []byte(m.agent.Card), c.contextID
 	return m, func() tea.Msg {
 		r, err := ch.Send(ctx, card, contextID, text)
 		return replyMsg{host: host, reply: r, err: err}
 	}
-}
-
-// wheel scrolls the chat when the mouse is over the chat panel.
-func (m model) wheel(msg tea.MouseWheelMsg) {
-	if m.agent == nil || m.agent.Card == nil || !m.layout().inChat(msg.X, msg.Y) {
-		return
-	}
-	switch msg.Button {
-	case tea.MouseWheelUp:
-		m.scrollChat(wheelLines)
-	case tea.MouseWheelDown:
-		m.scrollChat(-wheelLines)
-	}
-}
-
-// scrollChat moves the chat of the selected agent by delta lines (up is
-// positive). It stops at the newest and at the oldest line.
-func (m model) scrollChat(delta int) {
-	c := m.conv(m.agent.Host)
-	l := m.layout()
-	top := max(0, len(chatLines(c, l.chatWidth()))-l.chatRows())
-	c.scroll = max(0, min(top, c.scroll+delta))
 }
 
 func (m model) conv(host string) *conversation {
