@@ -25,6 +25,16 @@ func clean(s string) string {
 	return strings.Join(strings.Fields(b.String()), " ")
 }
 
+// cleanLines is clean for text with more lines, for example chat replies. It
+// keeps the line breaks.
+func cleanLines(s string) []string {
+	lines := strings.Split(strings.ReplaceAll(ansi.Strip(s), "\r\n", "\n"), "\n")
+	for i, l := range lines {
+		lines[i] = clean(l)
+	}
+	return lines
+}
+
 // isBidiControl reports the characters that can make text look different from
 // its content (Trojan Source, CVE-2021-42574).
 func isBidiControl(r rune) bool {

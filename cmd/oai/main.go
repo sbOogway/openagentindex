@@ -6,11 +6,17 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/sbOogway/openagentindex/internal/chat"
 	"github.com/sbOogway/openagentindex/internal/config"
+	"github.com/sbOogway/openagentindex/internal/fetch"
 	"github.com/sbOogway/openagentindex/internal/index"
 	"github.com/sbOogway/openagentindex/internal/tui"
 )
+
+// chatTimeout limits one chat request. Agents that use a language model can be slow.
+const chatTimeout = 2 * time.Minute
 
 func main() {
 	if err := run(); err != nil {
@@ -35,5 +41,5 @@ func run() error {
 		return err
 	}
 	defer idx.Close()
-	return tui.Run(ctx, tui.Config{Index: idx})
+	return tui.Run(ctx, tui.Config{Index: idx, Chat: chat.New(fetch.HTTPClient(chatTimeout))})
 }
