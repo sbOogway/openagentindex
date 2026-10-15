@@ -44,7 +44,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sethvargo/go-retry v0.5.0 // indirect
 	github.com/xo/terminfo v1.0.0 // indirect
-	github.com/yuin/goldmark v1.7.8 // indirect
+	github.com/yuin/goldmark v1.7.17 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
