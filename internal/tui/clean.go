@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -33,6 +34,34 @@ func cleanLines(s string) []string {
 		lines[i] = clean(l)
 	}
 	return lines
+}
+
+// cleanMarkdown makes untrusted agent text safe for the Markdown renderer. Unlike
+// clean, it keeps line breaks, indentation and spaces, which Markdown needs.
+func cleanMarkdown(s string) string {
+	s = ansi.Strip(s)
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\n':
+			b.WriteRune(r)
+		case r == '\t':
+			b.WriteString("    ")
+		case unicode.IsControl(r) || isBidiControl(r):
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// hyperlink matches an OSC 8 terminal hyperlink sequence.
+var hyperlink = regexp.MustCompile("\x1b\\]8;[^\x07\x1b]*(?:\x07|\x1b\\\\)")
+
+// stripHyperlinks removes OSC 8 sequences. The Markdown renderer makes them from
+// agent URLs, and a link text can hide where the link goes.
+func stripHyperlinks(s string) string {
+	return hyperlink.ReplaceAllString(s, "")
 }
 
 // isBidiControl reports the characters that can make text look different from

@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/color"
 	"strings"
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/sbOogway/openagentindex/internal/chat"
@@ -122,14 +125,14 @@ func send(m tea.Model, msg tea.Msg) (tea.Model, tea.Msg) {
 	return m, quit
 }
 
-func key(code rune) tea.KeyPressMsg {
+func press(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: code}
 }
 
 func start(t *testing.T, ix *fakeIndex, ch *fakeChat) tea.Model {
 	t.Helper()
 	var m tea.Model = newModel(context.Background(), Config{Index: ix, Chat: ch})
-	m, _ = send(m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m, _ = send(m, tea.WindowSizeMsg{Width: 120, Height: 50})
 	for _, msg := range run(m.Init()) {
 		m, _ = send(m, msg)
 	}
@@ -193,7 +196,7 @@ func TestTabCyclesStatus(t *testing.T) {
 	ix, ch := fixture()
 	m := start(t, ix, ch)
 	for range 3 {
-		m, _ = send(m, key(tea.KeyTab))
+		m, _ = send(m, press(tea.KeyTab))
 	}
 	var got []string
 	for _, q := range ix.queries {
@@ -208,7 +211,7 @@ func TestCursorSelectsAgent(t *testing.T) {
 	ix, ch := fixture()
 	m := start(t, ix, ch)
 	for _, k := range []rune{tea.KeyUp, tea.KeyDown, tea.KeyDown, tea.KeyDown} {
-		m, _ = send(m, key(k))
+		m, _ = send(m, press(k))
 	}
 	if got := m.(model).cursor; got != 2 {
 		t.Errorf("cursor = %d, want 2", got)
@@ -219,14 +222,14 @@ func TestCursorSelectsAgent(t *testing.T) {
 func TestChat(t *testing.T) {
 	ix, ch := fixture()
 	m := start(t, ix, ch)
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	if m.(model).focus != focusChat {
 		t.Fatal("enter did not open the chat")
 	}
 	m = typeText(m, "hi")
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	m = typeText(m, "again")
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 
 	want := []sent{
 		{card: `{"name":"Alpha"}`, contextID: "", text: "hi"},
@@ -235,33 +238,33 @@ func TestChat(t *testing.T) {
 	if fmt.Sprint(ch.sent) != fmt.Sprint(want) {
 		t.Errorf("sent = %+v, want %+v", ch.sent, want)
 	}
-	assertScreen(t, m, "you › hi", "agent › echo: hi", "agent › echo: again")
+	assertScreen(t, m, "│ you", "│ hi", "│ agent", "│ echo: hi", "│ echo: again")
 }
 
 func TestConversationStaysWithItsAgent(t *testing.T) {
 	ix, ch := fixture()
 	m := start(t, ix, ch)
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	m = typeText(m, "hi alpha")
-	m, _ = send(m, key(tea.KeyEnter))
-	m, _ = send(m, key(tea.KeyEscape))
+	m, _ = send(m, press(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEscape))
 	if m.(model).focus != focusSearch {
 		t.Fatal("esc did not close the chat")
 	}
-	m, _ = send(m, key(tea.KeyDown))
+	m, _ = send(m, press(tea.KeyDown))
 	if strings.Contains(screen(m), "hi alpha") {
 		t.Errorf("the chat of Beta shows the messages of Alpha:\n%s", screen(m))
 	}
-	m, _ = send(m, key(tea.KeyUp))
-	assertScreen(t, m, "you › hi alpha")
+	m, _ = send(m, press(tea.KeyUp))
+	assertScreen(t, m, "│ hi alpha")
 }
 
 func TestChatNotAvailableWithoutCard(t *testing.T) {
 	ix, ch := fixture()
 	m := start(t, ix, ch)
-	m, _ = send(m, key(tea.KeyDown))
-	m, _ = send(m, key(tea.KeyDown))
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyDown))
+	m, _ = send(m, press(tea.KeyDown))
+	m, _ = send(m, press(tea.KeyEnter))
 	if m.(model).focus != focusSearch {
 		t.Error("enter opened the chat of a host without a card")
 	}
@@ -272,10 +275,10 @@ func TestChatError(t *testing.T) {
 	ix, ch := fixture()
 	ch.reply = func(string) (chat.Reply, error) { return chat.Reply{}, errors.New("connection refused") }
 	m := start(t, ix, ch)
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	m = typeText(m, "hi")
-	m, _ = send(m, key(tea.KeyEnter))
-	assertScreen(t, m, "error › connection refused")
+	m, _ = send(m, press(tea.KeyEnter))
+	assertScreen(t, m, "│ error", "│ connection refused")
 }
 
 func TestReplyIsCleaned(t *testing.T) {
@@ -284,19 +287,19 @@ func TestReplyIsCleaned(t *testing.T) {
 		return chat.Reply{Text: "line one\x1b]0;pwned\x07\nline two\x1b[2J"}, nil
 	}
 	m := start(t, ix, ch)
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	m = typeText(m, "hi")
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	s := m.View().Content
 	if strings.Contains(s, "pwned") || strings.Contains(s, "\x1b]") || strings.Contains(s, "\x1b[2J") {
 		t.Errorf("screen contains agent control sequences: %q", s)
 	}
-	assertScreen(t, m, "agent › line one", "  line two")
+	assertScreen(t, m, "line one", "line two")
 }
 
 func TestQuit(t *testing.T) {
 	ix, ch := fixture()
-	for _, k := range []tea.KeyPressMsg{key(tea.KeyEscape), {Code: 'c', Mod: tea.ModCtrl}} {
+	for _, k := range []tea.KeyPressMsg{press(tea.KeyEscape), {Code: 'c', Mod: tea.ModCtrl}} {
 		if _, quit := send(start(t, ix, ch), k); quit == nil {
 			t.Errorf("%s did not quit", k)
 		}
@@ -326,16 +329,16 @@ func longChat(t *testing.T) tea.Model {
 	t.Helper()
 	ix, ch := fixture()
 	m := start(t, ix, ch)
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	for i := range 12 {
 		m, _ = send(m, tea.PasteMsg{Content: fmt.Sprintf("msg %02d", i)})
-		m, _ = send(m, key(tea.KeyEnter))
+		m, _ = send(m, press(tea.KeyEnter))
 	}
 	return m
 }
 
-// wheel turns the mouse wheel at column x of row 20, which is in the chat panel
-// for x of 40 or more, and in the agent list for smaller x.
+// wheel turns the mouse wheel at column x of row 20. In the 120 × 50 test
+// terminal, that is in the chat panel for x of 48 or more, else in the agent list.
 func wheel(m tea.Model, x int, button tea.MouseButton, times int) tea.Model {
 	for range times {
 		m, _ = send(m, tea.MouseWheelMsg{X: x, Y: 20, Button: button})
@@ -343,43 +346,114 @@ func wheel(m tea.Model, x int, button tea.MouseButton, times int) tea.Model {
 	return m
 }
 
-func chatScroll(m tea.Model) int {
-	return m.(model).convs["alpha.example"].scroll
+func chatLog(m tea.Model) viewport.Model {
+	return m.(model).cv.log
 }
 
 func TestWheelScrollsChat(t *testing.T) {
 	m := longChat(t)
-	if strings.Contains(screen(m), "you › msg 00") {
+	if strings.Contains(screen(m), "│ msg 00") {
 		t.Fatalf("the oldest message is visible before scrolling:\n%s", screen(m))
 	}
-	m = wheel(m, 70, tea.MouseWheelUp, 10)
-	assertScreen(t, m, "you › msg 00")
-	m = wheel(m, 70, tea.MouseWheelDown, 10)
-	assertScreen(t, m, "agent › echo: msg 11")
-	if got := chatScroll(m); got != 0 {
-		t.Errorf("scroll after scrolling back down = %d, want 0", got)
+	m = wheel(m, 70, tea.MouseWheelUp, 100)
+	assertScreen(t, m, "│ msg 00")
+	if !chatLog(m).AtTop() {
+		t.Error("the log is not at the top after scrolling up")
+	}
+	m = wheel(m, 70, tea.MouseWheelDown, 100)
+	assertScreen(t, m, "echo: msg 11")
+	if !chatLog(m).AtBottom() {
+		t.Error("the log is not at the bottom after scrolling down")
 	}
 }
 
 func TestWheelOutsideChat(t *testing.T) {
 	m := longChat(t)
 	m = wheel(m, 5, tea.MouseWheelUp, 5)
-	if got := chatScroll(m); got != 0 {
-		t.Errorf("wheel over the agent list scrolled the chat: scroll = %d", got)
+	if !chatLog(m).AtBottom() {
+		t.Error("the wheel over the agent list scrolled the chat")
 	}
 }
 
 func TestScrollStopsAtOldestLine(t *testing.T) {
 	m := longChat(t)
 	m = wheel(m, 70, tea.MouseWheelUp, 100)
-	top := chatScroll(m)
-	m, _ = send(m, key(tea.KeyPgUp))
-	if got := chatScroll(m); got != top {
-		t.Errorf("pgup at the top moved the scroll from %d to %d", top, got)
+	m, _ = send(m, press(tea.KeyPgUp))
+	if log := chatLog(m); log.YOffset() != 0 {
+		t.Errorf("pgup at the top: offset = %d, want 0", log.YOffset())
 	}
 	m = wheel(m, 70, tea.MouseWheelDown, 1)
-	if got := chatScroll(m); got != top-wheelLines {
-		t.Errorf("one wheel step down from the top: scroll = %d, want %d", got, top-wheelLines)
+	if log := chatLog(m); log.YOffset() != wheelLines {
+		t.Errorf("one wheel step down from the top: offset = %d, want %d", log.YOffset(), wheelLines)
+	}
+}
+
+func TestNewReplyKeepsScrollPosition(t *testing.T) {
+	m := longChat(t)
+	m = wheel(m, 70, tea.MouseWheelUp, 100)
+	m, _ = send(m, replyMsg{host: "alpha.example", reply: chat.Reply{Text: "late"}})
+	if !chatLog(m).AtTop() {
+		t.Error("a reply moved the log while the user read older messages")
+	}
+}
+
+func reply(t *testing.T, text string) tea.Model {
+	t.Helper()
+	ix, ch := fixture()
+	ch.reply = func(string) (chat.Reply, error) { return chat.Reply{Text: text}, nil }
+	m := start(t, ix, ch)
+	m, _ = send(m, press(tea.KeyEnter))
+	m, _ = send(m, tea.PasteMsg{Content: "hi"})
+	m, _ = send(m, press(tea.KeyEnter))
+	return m
+}
+
+func TestReplyIsMarkdown(t *testing.T) {
+	m := reply(t, "**bold** and `code`\n\n- first item\n- second item")
+	assertScreen(t, m, "bold", "code", "first item", "second item")
+	if s := screen(m); strings.Contains(s, "**bold**") || strings.Contains(s, "- first item") {
+		t.Errorf("the Markdown is not rendered:\n%s", s)
+	}
+}
+
+func TestReplyLinksAreNotHyperlinks(t *testing.T) {
+	m := reply(t, "[your bank](https://evil.example/login)")
+	if strings.Contains(m.View().Content, "\x1b]8;") {
+		t.Error("the screen has an OSC 8 hyperlink from agent text")
+	}
+	assertScreen(t, m, "https://evil.example/login")
+}
+
+func TestMultiLineMessage(t *testing.T) {
+	ix, ch := fixture()
+	m := start(t, ix, ch)
+	m, _ = send(m, press(tea.KeyEnter))
+	m = typeText(m, "a")
+	m, _ = send(m, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
+	m = typeText(m, "b")
+	_, _ = send(m, press(tea.KeyEnter))
+	if len(ch.sent) != 1 || ch.sent[0].text != "a\nb" {
+		t.Errorf("sent = %+v, want one message \"a\\nb\"", ch.sent)
+	}
+}
+
+func TestEmptyMessageIsNotSent(t *testing.T) {
+	ix, ch := fixture()
+	m := start(t, ix, ch)
+	m, _ = send(m, press(tea.KeyEnter))
+	m = typeText(m, "   ")
+	_, _ = send(m, press(tea.KeyEnter))
+	if len(ch.sent) != 0 {
+		t.Errorf("sent = %+v, want nothing", ch.sent)
+	}
+}
+
+func TestLightBackground(t *testing.T) {
+	ix, ch := fixture()
+	m := start(t, ix, ch)
+	m, _ = send(m, tea.BackgroundColorMsg{Color: color.White})
+	if m.(model).cv.dark {
+		t.Error("a white background did not select the light style")
 	}
 }
 
@@ -397,10 +471,72 @@ func TestPaste(t *testing.T) {
 	if q := ix.queries[len(ix.queries)-1]; q.Text != "al" {
 		t.Errorf("paste in the search box: last query = %q, want al", q.Text)
 	}
-	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, press(tea.KeyEnter))
 	m, _ = send(m, tea.PasteMsg{Content: "pasted message"})
-	_, _ = send(m, key(tea.KeyEnter))
+	_, _ = send(m, press(tea.KeyEnter))
 	if len(ch.sent) != 1 || ch.sent[0].text != "pasted message" {
 		t.Errorf("paste in the chat: sent = %+v", ch.sent)
+	}
+}
+
+func TestReplyKeepsLineBreaks(t *testing.T) {
+	m := reply(t, "first line\nsecond line")
+	s := screen(m)
+	if strings.Contains(s, "first line second line") {
+		t.Errorf("the line break of the reply is lost:\n%s", s)
+	}
+	assertScreen(t, m, "first line", "second line")
+}
+
+// column returns the screen column where text starts on the first line that has it.
+func column(t *testing.T, m tea.Model, text string) int {
+	t.Helper()
+	for _, line := range strings.Split(screen(m), "\n") {
+		if i := strings.Index(line, text); i >= 0 {
+			return lipgloss.Width(line[:i])
+		}
+	}
+	t.Fatalf("screen does not contain %q:\n%s", text, screen(m))
+	return 0
+}
+
+func TestMessageBoxes(t *testing.T) {
+	ix, ch := fixture()
+	ch.reply = func(text string) (chat.Reply, error) {
+		if text == "fail" {
+			return chat.Reply{}, errors.New("boom")
+		}
+		return chat.Reply{Text: "echo: " + text}, nil
+	}
+	m := start(t, ix, ch)
+	m, _ = send(m, press(tea.KeyEnter))
+	for _, text := range []string{"hi", "fail"} {
+		m, _ = send(m, tea.PasteMsg{Content: text})
+		m, _ = send(m, press(tea.KeyEnter))
+	}
+	m, _ = send(m, press(tea.KeyEscape)) // the chat panel border is not cyan without focus
+
+	you, agent, failure := column(t, m, "│ hi"), column(t, m, "│ echo: hi"), column(t, m, "│ boom")
+	if you != agent || agent != failure {
+		t.Errorf("boxes are not aligned on the left: user column %d, agent %d, error %d", you, agent, failure)
+	}
+	raw := m.View().Content
+	for name, corner := range map[string]string{"you": "\x1b[36m╭", "agent": "\x1b[32m╭", "error": "\x1b[31m╭"} {
+		if !strings.Contains(raw, corner) {
+			t.Errorf("no %s box with its border colour %q", name, corner)
+		}
+	}
+}
+
+func TestShortMessageHasSmallBox(t *testing.T) {
+	ix, ch := fixture()
+	m := start(t, ix, ch)
+	m, _ = send(m, press(tea.KeyEnter))
+	m, _ = send(m, tea.PasteMsg{Content: "hi"})
+	m, _ = send(m, press(tea.KeyEnter))
+	for _, line := range strings.Split(screen(m), "\n") {
+		if strings.Contains(line, "│ hi") && strings.Contains(line, "hi            ") {
+			t.Errorf("the box of a short message is padded to the full width: %q", line)
+		}
 	}
 }

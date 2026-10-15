@@ -28,3 +28,39 @@ func TestClean(t *testing.T) {
 		})
 	}
 }
+
+func TestCleanMarkdown(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "keeps lines and indentation", in: "# Title\n\n    code\n- item", want: "# Title\n\n    code\n- item"},
+		{name: "tab to spaces", in: "a\tb", want: "a    b"},
+		{name: "escape sequences", in: "**x**\x1b]0;pwned\x07\x1b[2J", want: "**x**"},
+		{name: "control characters", in: "a\x00b\rc\x07", want: "abc"},
+		{name: "bidi override", in: "user\u202egnp.exe", want: "usergnp.exe"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cleanMarkdown(tt.in); got != tt.want {
+				t.Errorf("cleanMarkdown(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripHyperlinks(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{in: "\x1b]8;id=1;https://evil.example\x1b\\click\x1b]8;;\x1b\\", want: "click"},
+		{in: "\x1b]8;;https://evil.example\x07click\x1b]8;;\x07", want: "click"},
+		{in: "\x1b[1mbold\x1b[0m", want: "\x1b[1mbold\x1b[0m"},
+	}
+	for _, tt := range tests {
+		if got := stripHyperlinks(tt.in); got != tt.want {
+			t.Errorf("stripHyperlinks(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

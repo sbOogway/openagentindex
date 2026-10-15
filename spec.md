@@ -504,6 +504,7 @@ Search result item:
 - The chat sends A2A messages from the computer of the user directly to the agent, with the A2A Go client (`internal/chat`): v1.0 and v0.3, JSON-RPC and HTTP+JSON. There is no CORS limit. The crawler and the API still do not send messages.
 - The chat uses the address checks of section 7.3 (HTTPS only; no loopback, private, link-local or multicast addresses). An agent card must not make the client of the user call its local network.
 - Agent text is untrusted. Remove control characters and terminal escape sequences from all agent text before display.
+- The chat shows agent replies as Markdown (glamour). Remove escape sequences and control characters before the Markdown renderer, and do not make terminal hyperlinks (OSC 8) from agent URLs: show the URL as text.
 
 ## 11. Deployment
 
