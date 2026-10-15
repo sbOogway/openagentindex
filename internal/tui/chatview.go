@@ -95,13 +95,12 @@ var (
 	errorColor = lipgloss.Color("1")
 )
 
-// message draws msg as a box: the user on the right, the agent and errors on the left.
+// message draws msg as a box. The border colour shows who wrote it.
 func (v *chatView) message(msg message, width int) string {
 	inner := max(10, width*bubbleShare/100-4) // borders and padding
 	switch msg.from {
 	case "you":
-		box := bubble("you", wrapLines(cleanLines(msg.text), inner), youColor)
-		return lipgloss.PlaceHorizontal(width, lipgloss.Right, box)
+		return bubble("you", wrapLines(cleanLines(msg.text), inner), youColor)
 	case "error":
 		return bubble("error", wrapLines(cleanLines(msg.text), inner), errorColor)
 	}

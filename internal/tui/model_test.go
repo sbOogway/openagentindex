@@ -516,8 +516,9 @@ func TestMessageBoxes(t *testing.T) {
 	}
 	m, _ = send(m, press(tea.KeyEscape)) // the chat panel border is not cyan without focus
 
-	if you, agent := column(t, m, "│ hi"), column(t, m, "│ echo: hi"); you <= agent {
-		t.Errorf("the box of the user (column %d) is not right of the box of the agent (column %d)", you, agent)
+	you, agent, failure := column(t, m, "│ hi"), column(t, m, "│ echo: hi"), column(t, m, "│ boom")
+	if you != agent || agent != failure {
+		t.Errorf("boxes are not aligned on the left: user column %d, agent %d, error %d", you, agent, failure)
 	}
 	raw := m.View().Content
 	for name, corner := range map[string]string{"you": "\x1b[36m╭", "agent": "\x1b[32m╭", "error": "\x1b[31m╭"} {
