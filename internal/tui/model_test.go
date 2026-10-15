@@ -320,3 +320,18 @@ func TestSearchError(t *testing.T) {
 	ix.err = errors.New("database is locked")
 	assertScreen(t, start(t, ix, ch), "database is locked")
 }
+
+func TestPaste(t *testing.T) {
+	ix, ch := fixture()
+	m := start(t, ix, ch)
+	m, _ = send(m, tea.PasteMsg{Content: "al"})
+	if q := ix.queries[len(ix.queries)-1]; q.Text != "al" {
+		t.Errorf("paste in the search box: last query = %q, want al", q.Text)
+	}
+	m, _ = send(m, key(tea.KeyEnter))
+	m, _ = send(m, tea.PasteMsg{Content: "pasted message"})
+	_, _ = send(m, key(tea.KeyEnter))
+	if len(ch.sent) != 1 || ch.sent[0].text != "pasted message" {
+		t.Errorf("paste in the chat: sent = %+v", ch.sent)
+	}
+}

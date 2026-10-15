@@ -125,8 +125,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.chatKey(msg)
 		}
 		return m.searchKey(msg)
+	case tea.PasteMsg:
+		if m.focus == focusChat {
+			var cmd tea.Cmd
+			m.input, cmd = m.input.Update(msg)
+			return m, cmd
+		}
+		return m.updateQuery(msg)
 	}
-	return m, nil
+	// Other messages, for example the cursor blink, belong to the inputs.
+	var queryCmd, inputCmd tea.Cmd
+	m.query, queryCmd = m.query.Update(msg)
+	m.input, inputCmd = m.input.Update(msg)
+	return m, tea.Batch(queryCmd, inputCmd)
 }
 
 func (m model) gotResults(msg resultsMsg) (tea.Model, tea.Cmd) {
@@ -167,6 +178,11 @@ func (m model) searchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.openChat()
 	}
+	return m.updateQuery(msg)
+}
+
+// updateQuery gives msg to the search input and searches if the query changed.
+func (m model) updateQuery(msg tea.Msg) (tea.Model, tea.Cmd) {
 	before := m.query.Value()
 	var cmd tea.Cmd
 	m.query, cmd = m.query.Update(msg)
