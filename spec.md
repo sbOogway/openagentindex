@@ -13,12 +13,13 @@ Open Agent Index finds A2A agents on the public internet. It verifies them, keep
 - Show which agents are live, and how reliable they are.
 - Give search results to people through a static website.
 - Give search results to agents through a REST API. Describe the API so that agents can use it without help.
+- Give developers a terminal client that searches the index fast and chats with any agent.
 
 ### 1.2 Non-goals
 
 - Do not index MCP servers or other non-A2A services.
 - Do not operate as an A2A agent. Do not supply an A2A or MCP endpoint.
-- Do not send tasks to agents. Do not test agent skills.
+- The crawler and the API do not send tasks to agents. Do not test agent skills. (The terminal client sends messages for its user, see section 10.)
 - Do not verify agent card signatures. Record only if a signature is present.
 - Do not supply accounts, payments or owner claims.
 - Do not scan large ranges of domains.
@@ -218,6 +219,7 @@ flowchart TB
 | `internal/index` | Own the schema, the writes, the reads and the search. Build the agent view. | `Ingest(ctx, observation)`, `Search(ctx, query)`, `Agent(ctx, host)`, lead methods |
 | `internal/crawler` | Schedule the work. Connect the packages above. | `Run(ctx)` |
 | `internal/api` | Serve HTTP. | `Handler(index) http.Handler` |
+| `internal/tui` | The terminal client. | `Run(ctx, Config)` |
 | `internal/snapshot` | Publish snapshots to R2. Load the latest snapshot from R2. | `Publisher.Publish(ctx)`, `Loader.Run(ctx)` |
 
 Each package defines the interfaces that it uses. The `cmd/` binaries only read configuration and connect packages.
@@ -493,6 +495,14 @@ Search result item:
 - Show agent card text as text only. Never insert it as HTML. Agent cards are untrusted input.
 - If the API does not respond, show a message that search is not available.
 
+### Terminal client
+
+- The binary `oai` (`cmd/oai`, `internal/tui`) uses Bubble Tea v2.
+- It opens the SQLite index read-only with the read methods of `internal/index`, so search is fast and works offline. It can read the file while the crawler writes it. Until public snapshots exist (M5), it needs a local index file.
+- Screens: search (text and filters), agent (name, host, status, version, tags, last checks), chat.
+- The chat sends A2A messages from the computer of the user directly to the agent, with the A2A Go client. There is no CORS limit. The crawler and the API still do not send messages.
+- Agent text is untrusted. Remove control characters and terminal escape sequences from all agent text before display.
+
 ## 11. Deployment
 
 - One VPS with 2 vCPU and 4 GB RAM is sufficient.
@@ -511,7 +521,7 @@ Configuration:
 
 | Key | Variable | Used by | Purpose |
 |---|---|---|---|
-| `db_path` | `OAI_DB_PATH` | crawler, api | Path of the SQLite file. The API uses it in development (M4). |
+| `db_path` | `OAI_DB_PATH` | crawler, api, tui | Path of the SQLite file. The API uses it in development (M4). The terminal client opens it read-only. |
 | `contact_url` | `OAI_CONTACT_URL` | crawler | URL in the user agent |
 | | `OAI_GITHUB_TOKEN` | crawler | Token for GitHub code search |
 | `seeds_path` | `OAI_SEEDS_PATH` | crawler | Path of `seeds.txt` |
@@ -545,6 +555,7 @@ Configuration:
 | M4 | REST API with search and ranking, `/openapi.json` and `/llms.txt`. In development, it reads a local SQLite file. |
 | M5 | Snapshots to R2, `Containerfile`, compose file, VPS deployment. |
 | M6 | Website on Cloudflare Pages. |
+| M7 | Terminal client: search, agent screen and chat on a local index. |
 
 ## 14. Future: decentralized sync
 
