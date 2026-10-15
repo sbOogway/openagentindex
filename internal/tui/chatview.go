@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -11,9 +12,12 @@ import (
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/styles"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
+	// bubbleShare is the part of the log width, in percent, that one message can use.
+	bubbleShare   = 85
 	maxInputLines = 4
 	maxInputChars = 8000
 	hint          = "Messages go from this computer directly to the agent. Some agents charge or need a key."
@@ -85,14 +89,32 @@ func (v *chatView) content(c *conversation) string {
 	return strings.Join(parts, "\n")
 }
 
+var (
+	youColor   = lipgloss.Color("6")
+	agentColor = lipgloss.Color("2")
+	errorColor = lipgloss.Color("1")
+)
+
+// message draws msg as a box: the user on the right, the agent and errors on the left.
 func (v *chatView) message(msg message, width int) string {
+	inner := max(10, width*bubbleShare/100-4) // borders and padding
 	switch msg.from {
 	case "you":
-		return prefixed(accent.Render("you ›"), cleanLines(msg.text), width)
+		box := bubble("you", wrapLines(cleanLines(msg.text), inner), youColor)
+		return lipgloss.PlaceHorizontal(width, lipgloss.Right, box)
 	case "error":
-		return prefixed(red.Render("error ›"), cleanLines(msg.text), width)
+		return bubble("error", wrapLines(cleanLines(msg.text), inner), errorColor)
 	}
-	return green.Render("agent ›") + "\n" + v.markdown(msg.text, width)
+	return bubble("agent", strings.Split(v.markdown(msg.text, inner), "\n"), agentColor)
+}
+
+func bubble(label string, lines []string, c color.Color) string {
+	body := append([]string{lipgloss.NewStyle().Foreground(c).Bold(true).Render(label)}, lines...)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(c).
+		Padding(0, 1).
+		Render(strings.Join(body, "\n"))
 }
 
 // markdown renders untrusted agent text as Markdown, or as plain text if that fails.
@@ -101,7 +123,11 @@ func (v *chatView) markdown(text string, width int) string {
 	if err == nil {
 		out, err := r.Render(cleanMarkdown(text))
 		if err == nil {
-			return strings.Trim(stripHyperlinks(out), "\n")
+			lines := strings.Split(strings.Trim(stripHyperlinks(out), "\n"), "\n")
+			for i, l := range lines {
+				lines[i] = trimPadding(l)
+			}
+			return strings.Join(lines, "\n")
 		}
 	}
 	return strings.Join(wrapLines(cleanLines(text), width), "\n")
@@ -111,12 +137,14 @@ func (v *chatView) markdownRenderer(width int) (*glamour.TermRenderer, error) {
 	if v.renderer != nil && v.rendererWidth == width && v.rendererDark == v.dark {
 		return v.renderer, nil
 	}
-	style := styles.DarkStyle
+	style := styles.DarkStyleConfig
 	if !v.dark {
-		style = styles.LightStyle
+		style = styles.LightStyleConfig
 	}
+	noMargin := uint(0)
+	style.Document.Margin = &noMargin // the message box has its own padding
 	// Many agents send plain text, where each line break counts.
-	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle(style), glamour.WithWordWrap(width), glamour.WithPreservedNewLines())
+	r, err := glamour.NewTermRenderer(glamour.WithStyles(style), glamour.WithWordWrap(width), glamour.WithPreservedNewLines())
 	if err != nil {
 		return nil, err
 	}
@@ -124,24 +152,20 @@ func (v *chatView) markdownRenderer(width int) (*glamour.TermRenderer, error) {
 	return r, nil
 }
 
-// prefixed puts the label before the first line and wraps the lines to width.
-func prefixed(label string, lines []string, width int) string {
-	indent := strings.Repeat(" ", lipgloss.Width(label)+1)
-	out := wrapLines(lines, max(10, width-len(indent)))
-	for i := range out {
-		if i == 0 {
-			out[i] = label + " " + out[i]
-		} else {
-			out[i] = indent + out[i]
-		}
-	}
-	return strings.Join(out, "\n")
+// trimPadding removes the spaces after the text of a line, which glamour adds up
+// to the wrap width. It keeps the styles of the text.
+func trimPadding(line string) string {
+	text := strings.TrimRight(ansi.Strip(line), " ")
+	return ansi.Truncate(line, ansi.StringWidth(text), "")
 }
 
+// wrapLines wraps each line to width, without padding the short lines.
 func wrapLines(lines []string, width int) []string {
 	var out []string
 	for _, l := range lines {
-		out = append(out, wrap(l, width, 0)...)
+		for _, w := range wrap(l, width, 0) {
+			out = append(out, trimPadding(w))
+		}
 	}
 	return out
 }
