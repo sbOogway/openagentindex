@@ -10,3 +10,6 @@ contact_url = "https://github.com/sbOogway/openagentindex"
 db_path = "data/oai.db"
 listen_addr = "localhost:8080"
 cors_origin = "http://localhost:8000"
+
+[tui]
+db_path = "data/oai.db"

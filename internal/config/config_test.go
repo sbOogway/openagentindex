@@ -17,6 +17,9 @@ db_path = "data/crawler.db"
 seeds_path = "seeds.txt"
 contact_url = "https://example.com/contact"
 
+[tui]
+db_path = "data/tui.db"
+
 [api]
 db_path = "data/api.db"
 listen_addr = ":9000"
@@ -171,5 +174,36 @@ func TestLoadErrors(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoadTUI(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want config.TUI
+	}{
+		{name: "file", want: config.TUI{DBPath: "data/tui.db"}},
+		{name: "environment overrides the file", env: map[string]string{"OAI_DB_PATH": "/x.db"}, want: config.TUI{DBPath: "/x.db"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := isolate(t, tt.env)
+			writeFile(t, filepath.Join(dir, config.DefaultPath), fullFile)
+			got, err := config.LoadTUI()
+			if err != nil {
+				t.Fatalf("LoadTUI: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("LoadTUI = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadTUIMissing(t *testing.T) {
+	isolate(t, nil)
+	if _, err := config.LoadTUI(); !errors.Is(err, config.ErrMissing) || !strings.Contains(err.Error(), "tui.db_path (OAI_DB_PATH)") {
+		t.Errorf("err = %v, want ErrMissing for tui.db_path", err)
 	}
 }
