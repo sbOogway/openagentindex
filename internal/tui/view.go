@@ -31,23 +31,51 @@ var (
 func (m model) View() tea.View {
 	v := tea.NewView(m.screen())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+// layout holds the panel sizes for the terminal size.
+type layout struct {
+	leftW, rightW, mainH int
+	chatTop, chatH       int
+}
+
+func (m model) layout() layout {
+	leftW := max(minWidth/2, m.width*2/5)
+	mainH := m.height - topHeight - 1
+	return layout{
+		leftW: leftW, rightW: m.width - leftW, mainH: mainH,
+		chatTop: topHeight + detailsHeight, chatH: mainH - detailsHeight,
+	}
+}
+
+// inChat reports whether the cell x, y is in the chat panel.
+func (l layout) inChat(x, y int) bool {
+	return x >= l.leftW && y >= l.chatTop && y < l.chatTop+l.chatH
+}
+
+func (l layout) chatWidth() int {
+	return l.rightW - 4 // borders and padding
+}
+
+func (l layout) chatRows() int {
+	return max(1, l.chatH-4) // borders, title and input
 }
 
 func (m model) screen() string {
 	if m.width < minWidth || m.height < minHeight {
 		return "The terminal is too small."
 	}
-	leftW := max(minWidth/2, m.width*2/5)
-	rightW := m.width - leftW
-	mainH := m.height - topHeight - 1
+	l := m.layout()
+	leftW, rightW, mainH := l.leftW, l.rightW, l.mainH
 	top := lipgloss.JoinHorizontal(lipgloss.Top,
 		panel("Search", []string{inputView(m.query, leftW)}, leftW, topHeight, m.focus == focusSearch),
 		panel("Index", []string{m.summary()}, rightW, topHeight, false),
 	)
 	right := lipgloss.JoinVertical(lipgloss.Left,
 		panel(m.detailsTitle(), m.details(rightW-4), rightW, detailsHeight, false),
-		m.chatPanel(rightW, mainH-detailsHeight),
+		m.chatPanel(l),
 	)
 	main := lipgloss.JoinHorizontal(lipgloss.Top,
 		panel("Agents", m.list(mainH-3), leftW, mainH, m.focus == focusSearch),
@@ -152,7 +180,8 @@ func lastCheck(status int, at time.Time) string {
 	return fmt.Sprintf("HTTP %d · %s", status, at.Local().Format("2006-01-02 15:04"))
 }
 
-func (m model) chatPanel(w, h int) string {
+func (m model) chatPanel(l layout) string {
+	w, h := l.rightW, l.chatH
 	title := "Chat"
 	if m.focus == focusSearch {
 		title += faint.Render("  enter to start")
@@ -165,13 +194,28 @@ func (m model) chatPanel(w, h int) string {
 		return panel(title, []string{faint.Render(note)}, w, h, false)
 	}
 	c := m.convs[m.agent.Host]
-	rows := max(1, h-4) // borders, title, input
-	body := append(m.chatLog(c, w-4, rows), inputView(m.input, w))
+	body := append(chatLog(c, l.chatWidth(), l.chatRows()), inputView(m.input, w))
 	return panel(title, body, w, h, m.focus == focusChat)
 }
 
 // chatLog returns rows lines of the conversation, from the newest line minus the scroll.
-func (m model) chatLog(c *conversation, width, rows int) []string {
+func chatLog(c *conversation, width, rows int) []string {
+	lines := chatLines(c, width)
+	scroll := 0
+	if c != nil {
+		scroll = min(c.scroll, max(0, len(lines)-rows))
+	}
+	end := len(lines) - scroll
+	start := max(0, end-rows)
+	out := lines[start:end]
+	for len(out) < rows {
+		out = append([]string{""}, out...)
+	}
+	return out
+}
+
+// chatLines returns all lines of the conversation for the width.
+func chatLines(c *conversation, width int) []string {
 	var lines []string
 	if c != nil {
 		for _, msg := range c.messages {
@@ -186,17 +230,7 @@ func (m model) chatLog(c *conversation, width, rows int) []string {
 			lines = append(lines, faint.Render(l))
 		}
 	}
-	scroll := 0
-	if c != nil {
-		scroll = min(c.scroll, max(0, len(lines)-rows))
-	}
-	end := len(lines) - scroll
-	start := max(0, end-rows)
-	out := lines[start:end]
-	for len(out) < rows {
-		out = append([]string{""}, out...)
-	}
-	return out
+	return lines
 }
 
 // inputView renders a text input that fills a panel of width w. A text input
@@ -240,7 +274,7 @@ func wrap(text string, width, limit int) []string {
 
 func (m model) help() string {
 	if m.focus == focusChat {
-		return faint.Render(" enter send · pgup/pgdown scroll · esc back · ctrl+c quit")
+		return faint.Render(" enter send · wheel or pgup/pgdown scroll · esc back · ctrl+c quit")
 	}
 	return faint.Render(" type to search · ↑↓ select · enter chat · tab status · esc quit")
 }
