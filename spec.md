@@ -220,6 +220,7 @@ flowchart TB
 | `internal/crawler` | Schedule the work. Connect the packages above. | `Run(ctx)` |
 | `internal/api` | Serve HTTP. | `Handler(index) http.Handler` |
 | `internal/tui` | The terminal client. | `Run(ctx, Config)` |
+| `internal/chat` | Send a message to an agent and get the reply, from its card. | `Client.Send(ctx, card, contextID, text)` |
 | `internal/snapshot` | Publish snapshots to R2. Load the latest snapshot from R2. | `Publisher.Publish(ctx)`, `Loader.Run(ctx)` |
 
 Each package defines the interfaces that it uses. The `cmd/` binaries only read configuration and connect packages.
@@ -499,8 +500,9 @@ Search result item:
 
 - The binary `oai` (`cmd/oai`, `internal/tui`) uses Bubble Tea v2.
 - It opens the SQLite index read-only with the read methods of `internal/index`, so search is fast and works offline. It can read the file while the crawler writes it. Until public snapshots exist (M5), it needs a local index file.
-- Screens: search (text and filters), agent (name, host, status, version, tags, last checks), chat.
-- The chat sends A2A messages from the computer of the user directly to the agent, with the A2A Go client. There is no CORS limit. The crawler and the API still do not send messages.
+- Layout: panels in a grid (bento). Search box and status filter; the result list; the selected agent (name, host, status, version, bindings, description, tags, last check); the chat with the selected agent. `enter` on an agent opens its chat. Each agent keeps its conversation while the client runs.
+- The chat sends A2A messages from the computer of the user directly to the agent, with the A2A Go client (`internal/chat`): v1.0 and v0.3, JSON-RPC and HTTP+JSON. There is no CORS limit. The crawler and the API still do not send messages.
+- The chat uses the address checks of section 7.3 (HTTPS only; no loopback, private, link-local or multicast addresses). An agent card must not make the client of the user call its local network.
 - Agent text is untrusted. Remove control characters and terminal escape sequences from all agent text before display.
 
 ## 11. Deployment
