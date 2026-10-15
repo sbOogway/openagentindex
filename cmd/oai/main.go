@@ -27,6 +27,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if _, err := os.Stat(cfg.DBPath); err != nil {
+		return fmt.Errorf("no index at %s (set db_path in [tui] of oai.toml or OAI_DB_PATH; make run-crawler creates it): %w", cfg.DBPath, err)
+	}
 	idx, err := index.OpenReadOnly(ctx, cfg.DBPath)
 	if err != nil {
 		return err
