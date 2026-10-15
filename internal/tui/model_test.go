@@ -321,6 +321,75 @@ func TestSearchError(t *testing.T) {
 	assertScreen(t, start(t, ix, ch), "database is locked")
 }
 
+// longChat returns a model with the chat of Alpha open and 12 messages sent.
+func longChat(t *testing.T) tea.Model {
+	t.Helper()
+	ix, ch := fixture()
+	m := start(t, ix, ch)
+	m, _ = send(m, key(tea.KeyEnter))
+	for i := range 12 {
+		m, _ = send(m, tea.PasteMsg{Content: fmt.Sprintf("msg %02d", i)})
+		m, _ = send(m, key(tea.KeyEnter))
+	}
+	return m
+}
+
+// wheel turns the mouse wheel at column x of row 20, which is in the chat panel
+// for x of 40 or more, and in the agent list for smaller x.
+func wheel(m tea.Model, x int, button tea.MouseButton, times int) tea.Model {
+	for range times {
+		m, _ = send(m, tea.MouseWheelMsg{X: x, Y: 20, Button: button})
+	}
+	return m
+}
+
+func chatScroll(m tea.Model) int {
+	return m.(model).convs["alpha.example"].scroll
+}
+
+func TestWheelScrollsChat(t *testing.T) {
+	m := longChat(t)
+	if strings.Contains(screen(m), "you › msg 00") {
+		t.Fatalf("the oldest message is visible before scrolling:\n%s", screen(m))
+	}
+	m = wheel(m, 70, tea.MouseWheelUp, 10)
+	assertScreen(t, m, "you › msg 00")
+	m = wheel(m, 70, tea.MouseWheelDown, 10)
+	assertScreen(t, m, "agent › echo: msg 11")
+	if got := chatScroll(m); got != 0 {
+		t.Errorf("scroll after scrolling back down = %d, want 0", got)
+	}
+}
+
+func TestWheelOutsideChat(t *testing.T) {
+	m := longChat(t)
+	m = wheel(m, 5, tea.MouseWheelUp, 5)
+	if got := chatScroll(m); got != 0 {
+		t.Errorf("wheel over the agent list scrolled the chat: scroll = %d", got)
+	}
+}
+
+func TestScrollStopsAtOldestLine(t *testing.T) {
+	m := longChat(t)
+	m = wheel(m, 70, tea.MouseWheelUp, 100)
+	top := chatScroll(m)
+	m, _ = send(m, key(tea.KeyPgUp))
+	if got := chatScroll(m); got != top {
+		t.Errorf("pgup at the top moved the scroll from %d to %d", top, got)
+	}
+	m = wheel(m, 70, tea.MouseWheelDown, 1)
+	if got := chatScroll(m); got != top-wheelLines {
+		t.Errorf("one wheel step down from the top: scroll = %d, want %d", got, top-wheelLines)
+	}
+}
+
+func TestMouseMode(t *testing.T) {
+	ix, ch := fixture()
+	if mode := start(t, ix, ch).View().MouseMode; mode != tea.MouseModeCellMotion {
+		t.Errorf("mouse mode = %v, want cell motion", mode)
+	}
+}
+
 func TestPaste(t *testing.T) {
 	ix, ch := fixture()
 	m := start(t, ix, ch)

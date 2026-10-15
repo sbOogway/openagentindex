@@ -12,6 +12,12 @@ import (
 
 var statuses = []string{index.StatusOK, index.StatusFailed, index.StatusAny}
 
+// Lines that one page key and one wheel step scroll the chat.
+const (
+	pageLines  = 5
+	wheelLines = 3
+)
+
 type Index interface {
 	Search(ctx context.Context, q index.Query) (index.Results, error)
 	Agent(ctx context.Context, host string) (index.Agent, error)
@@ -117,6 +123,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case replyMsg:
 		m.gotReply(msg)
 		return m, nil
+	case tea.MouseWheelMsg:
+		m.wheel(msg)
+		return m, nil
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -201,11 +210,10 @@ func (m model) chatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.send()
 	case "pgup":
-		m.conv(m.agent.Host).scroll += 5
+		m.scrollChat(pageLines)
 		return m, nil
 	case "pgdown":
-		c := m.conv(m.agent.Host)
-		c.scroll = max(0, c.scroll-5)
+		m.scrollChat(-pageLines)
 		return m, nil
 	}
 	var cmd tea.Cmd
@@ -284,6 +292,28 @@ func (m model) send() (tea.Model, tea.Cmd) {
 		r, err := ch.Send(ctx, card, contextID, text)
 		return replyMsg{host: host, reply: r, err: err}
 	}
+}
+
+// wheel scrolls the chat when the mouse is over the chat panel.
+func (m model) wheel(msg tea.MouseWheelMsg) {
+	if m.agent == nil || m.agent.Card == nil || !m.layout().inChat(msg.X, msg.Y) {
+		return
+	}
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		m.scrollChat(wheelLines)
+	case tea.MouseWheelDown:
+		m.scrollChat(-wheelLines)
+	}
+}
+
+// scrollChat moves the chat of the selected agent by delta lines (up is
+// positive). It stops at the newest and at the oldest line.
+func (m model) scrollChat(delta int) {
+	c := m.conv(m.agent.Host)
+	l := m.layout()
+	top := max(0, len(chatLines(c, l.chatWidth()))-l.chatRows())
+	c.scroll = max(0, min(top, c.scroll+delta))
 }
 
 func (m model) conv(host string) *conversation {
