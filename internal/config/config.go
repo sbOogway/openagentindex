@@ -32,9 +32,14 @@ type API struct {
 	CORSOrigin string `toml:"cors_origin"`
 }
 
+type TUI struct {
+	DBPath string `toml:"db_path"`
+}
+
 type file struct {
 	Crawler Crawler `toml:"crawler"`
 	API     API     `toml:"api"`
+	TUI     TUI     `toml:"tui"`
 }
 
 // setting is one configuration value: its key in the file, its environment variable and its target.
@@ -69,6 +74,18 @@ func LoadAPI() (API, error) {
 		{key: "api.db_path", env: "OAI_DB_PATH", value: &c.DBPath, required: true},
 		{key: "api.listen_addr", env: "OAI_LISTEN_ADDR", value: &c.ListenAddr, required: true},
 		{key: "api.cors_origin", env: "OAI_CORS_ORIGIN", value: &c.CORSOrigin},
+	})
+}
+
+// LoadTUI reads the [tui] section of the configuration file. Environment variables override it.
+func LoadTUI() (TUI, error) {
+	f, err := read()
+	c := f.TUI
+	if err != nil {
+		return c, err
+	}
+	return c, apply([]setting{
+		{key: "tui.db_path", env: "OAI_DB_PATH", value: &c.DBPath, required: true},
 	})
 }
 
